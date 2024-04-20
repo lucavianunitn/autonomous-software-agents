@@ -49,6 +49,7 @@ export class TileMap {
         }
 
         console.log("}");
+        console.log();
 
     }
 

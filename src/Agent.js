@@ -16,7 +16,7 @@ export class Agent {
 
     #map;
 
-    #parcels;
+    #perceivedParcels;
 
     constructor(serverUrl, agentToken) {
 
@@ -24,7 +24,7 @@ export class Agent {
         this.#serverUrl = serverUrl;
         this.#client = new DeliverooApi(serverUrl, agentToken);
 
-        this.#parcels = new Map();
+        this.#perceivedParcels = new Map();
 
         this.setupClient();
     }
@@ -57,7 +57,7 @@ export class Agent {
                 if ( ! tried.includes(current) ) {
                     
                     if ( await client.move( current ) ) {
-                        console.log( 'moved', current );
+                        console.log( 'moved %s\n', current );
                         previous = current;
                         break; // moved, continue
                     }
@@ -95,10 +95,18 @@ export class Agent {
 
         this.#client.onDisconnect( () => console.log( "disconnected",  this.#client.socket.id ) );
 
-        this.#client.onParcelsSensing( async ( perceived_parcels ) => {
-            for (const p of perceived_parcels) {
-                this.#parcels.set( p.id, p)
-            }
+        /**
+         * The event handled by this listener is emitted on agent connection and on each movement of the agent.
+         */
+        this.#client.onParcelsSensing( async ( perceivedParcels ) => {
+
+            this.#perceivedParcels.clear();
+
+            for (const parcel of perceivedParcels)
+                this.#perceivedParcels.set(parcel.id, parcel);
+            
+            this.printPerceivedParcels();
+
         })
 
         /**
@@ -107,19 +115,13 @@ export class Agent {
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
         this.#client.onYou( ( {id, name, x, y, score} ) => {
-            this.#id = id
-            this.#name = name
-            this.#xPos = x
-            this.#yPos = y
-            this.#score = score
+            this.#id = id;
+            this.#name = name;
+            this.#xPos = x;
+            this.#yPos = y;
+            this.#score = score;
 
-            console.log(`AGENT ${this.#id} DEBUG:`)
-            console.log("- id: " + id);
-            console.log("- name: " + name);
-            console.log("- xPos: " + x);
-            console.log("- yPos:" + y);
-            console.log("- score: " + score);
-            console.log("\n");
+            this.printDebug();
         } )
 
         /**
@@ -132,6 +134,28 @@ export class Agent {
             this.#map.printDebug();
 
         })
+
+    }
+
+    printDebug() {
+
+        console.log("Agent {");
+        console.log(`- agentToken = ${this.#agentToken}`);
+        console.log(`- id = ${this.#id}`);
+        console.log(`- name = ${this.#name}`);
+        console.log(`- xPos = ${this.#xPos}`);
+        console.log(`- yPos = ${this.#yPos}`);
+        console.log(`- score = ${this.#score}`);
+        console.log("}");
+        console.log();
+
+    }
+
+    printPerceivedParcels() {
+
+        console.log(`Agent '${this.#name}' perceived parcels map:`);
+        console.log(this.#perceivedParcels);
+        console.log();
 
     }
 
