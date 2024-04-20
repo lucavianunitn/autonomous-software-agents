@@ -17,6 +17,7 @@ export class Agent {
     #map;
 
     #perceivedParcels;
+    #perceivedAgents;
 
     constructor(serverUrl, agentToken) {
 
@@ -25,6 +26,7 @@ export class Agent {
         this.#client = new DeliverooApi(serverUrl, agentToken);
 
         this.#perceivedParcels = new Map();
+        this.#perceivedAgents = new Map();
 
         this.setupClient();
     }
@@ -96,16 +98,13 @@ export class Agent {
         this.#client.onDisconnect( () => console.log( "disconnected",  this.#client.socket.id ) );
 
         /**
-         * The event handled by this listener is emitted on agent connection and on each movement of the agent.
+         * The event handled by this listener is emitted on agent connection.
          */
-        this.#client.onParcelsSensing( async ( perceivedParcels ) => {
+        this.#client.onMap( ( width, height, tilesInfo ) => {
 
-            this.#perceivedParcels.clear();
+            this.#map = new TileMap(width, height, tilesInfo);
 
-            for (const parcel of perceivedParcels)
-                this.#perceivedParcels.set(parcel.id, parcel);
-            
-            this.printPerceivedParcels();
+            this.#map.printDebug();
 
         })
 
@@ -125,15 +124,36 @@ export class Agent {
         } )
 
         /**
-         * The event handled by this listener is emitted on agent connection.
+         * The event handled by this listener is emitted on agent connection and on each movement of the agent.
+         * NOTE: this event is emitted also when a package carried by another agents enters in the visible area? 
          */
-        this.#client.onMap( ( width, height, tilesInfo ) => {
+        this.#client.onParcelsSensing( async ( perceivedParcels ) => {
 
-            this.#map = new TileMap(width, height, tilesInfo);
+            this.#perceivedParcels.clear();
 
-            this.#map.printDebug();
+            for (const parcel of perceivedParcels)
+                this.#perceivedParcels.set(parcel.id, parcel);
+            
+            this.printPerceivedParcels();
 
         })
+
+        /**
+         * The event handled by this listener is emitted on agent connection, on each movement of the agent and
+         * on each movement of other agents in the visible area.
+         */
+        this.#client.onAgentsSensing( async ( perceivedAgents ) => {
+
+            this.#perceivedAgents.clear();
+
+            for (const agent of perceivedAgents)
+                this.#perceivedAgents.set(agent.id, agent);
+            
+            this.printPerceivedAgents();
+
+        })
+
+
 
     }
 
@@ -155,6 +175,14 @@ export class Agent {
 
         console.log(`Agent '${this.#name}' perceived parcels map:`);
         console.log(this.#perceivedParcels);
+        console.log();
+
+    }
+
+    printPerceivedAgents() {
+
+        console.log(`Agent '${this.#name}' perceived agents map:`);
+        console.log(this.#perceivedAgents);
         console.log();
 
     }
