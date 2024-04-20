@@ -129,13 +129,7 @@ export class Agent {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
-            console.log("MAP INFO: ");
-            console.log("width " + width);
-            console.log("height " + height);
-            console.log("tilesInfo: ");
-            tilesInfo.forEach( tileInfo => {
-                console.log(`- { x: ${tileInfo["x"]} ; y: ${tileInfo["y"]} ; delivery: ${tileInfo["delivery"]} ; parcelSpawner: ${tileInfo["parcelSpawner"]} }`);
-            });
+            this.#map.printDebug();
 
         })
 
