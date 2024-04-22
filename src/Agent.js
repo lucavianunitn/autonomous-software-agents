@@ -6,6 +6,13 @@ export class Agent {
     #serverUrl;
     #client;
 
+    // Debug Flags
+    #onYouVerbose = false;
+    #onMapVerbose = false;
+    #onParcelsSensingVerbose = false;
+    #onAgentsSensingVerbose = false;
+    #pathBetweenTilesVerbose = true;
+
     // Agent info
     #agentToken;
     #id;
@@ -79,6 +86,36 @@ export class Agent {
         }
     }
 
+    async testLoop () {
+
+        let client = this.#client;
+    
+        while (this.#map == undefined) {
+            await client.timer(1000);
+        }
+        
+        let destination = [3,8]; //You can change me :)
+        let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination);
+
+        if(this.#pathBetweenTilesVerbose){
+            console.log("Distance "+distance);
+            console.log("path "+path);
+            console.log("directions "+directions);    
+        }
+
+        if(distance < 0){
+            console.log("ERROR, it's not possible to reach "+destination);
+        }else{
+            while(true){
+                while ( directions.length > 0 ) {
+                    if ( await client.move( directions.shift() ) ) {
+                        break; // moved, continue
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * @returns the token of this agent.
      */
@@ -104,7 +141,7 @@ export class Agent {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
-            this.#map.printDebug();
+            if(this.#onMapVerbose) this.#map.printDebug();
 
         })
 
@@ -120,7 +157,7 @@ export class Agent {
             this.#yPos = y;
             this.#score = score;
 
-            this.printDebug();
+            if(this.#onYouVerbose) this.printDebug();
         } )
 
         /**
@@ -134,7 +171,7 @@ export class Agent {
             for (const parcel of perceivedParcels)
                 this.#perceivedParcels.set(parcel.id, parcel);
             
-            this.printPerceivedParcels();
+            if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         })
 
@@ -149,7 +186,7 @@ export class Agent {
             for (const agent of perceivedAgents)
                 this.#perceivedAgents.set(agent.id, agent);
             
-            this.printPerceivedAgents();
+                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
 
