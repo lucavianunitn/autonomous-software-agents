@@ -10,7 +10,7 @@ export class Agent {
     #onYouVerbose = false;
     #onMapVerbose = false;
     #onParcelsSensingVerbose = false;
-    #onAgentsSensingVerbose = false;
+    #onAgentsSensingVerbose = true;
     #pathBetweenTilesVerbose = true;
 
     // Agent info
@@ -94,25 +94,23 @@ export class Agent {
             await client.timer(1000);
         }
         
-        let destination = [3,8]; //You can change me :)
-        let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination);
-
-        if(this.#pathBetweenTilesVerbose){
-            console.log("Distance "+distance);
-            console.log("path "+path);
-            console.log("directions "+directions);    
-        }
-
-        if(distance < 0){
-            console.log("ERROR, it's not possible to reach "+destination);
-        }else{
-            while(true){
-                while ( directions.length > 0 ) {
-                    if ( await client.move( directions.shift() ) ) {
-                        break; // moved, continue
-                    }
-                }
+        let destination = [3,9]; //You can change me :)
+        while(true){
+            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
+    
+            if(this.#pathBetweenTilesVerbose){
+                console.log("Distance "+distance);
+                console.log("path "+path);
+                //console.log("directions "+directions);    
             }
+    
+            if(distance < 0){
+                console.log("ERROR, it's not possible to reach "+destination);
+                await client.timer(500);
+            }else{
+                console.log("next direction "+directions[0]);
+                await client.move( directions[0] );          
+            }    
         }
     }
 

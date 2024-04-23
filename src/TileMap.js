@@ -40,7 +40,7 @@ export class TileMap {
      * - is 0: start == end
      * - is -1: there does not exist a path
      */
-    pathBetweenTiles(start, end) {
+    pathBetweenTiles(start, end, agentsPerceived) {
         start = start.map(function(coordinate){ // to avoid that start contains partial positions
             return Math.round(coordinate);
         });
@@ -54,7 +54,8 @@ export class TileMap {
         const visited = new Set(); // Mark visited cells
         const erdos = {[start]: 0};
         const previousCell = {};
-    
+        const agentsMap = this.createAgentsMap(agentsPerceived);
+
         visited.add(`${start[0]},${start[1]}`);
     
         while (queue.length > 0) {
@@ -94,7 +95,11 @@ export class TileMap {
                 const newRow = row + dr;
     
                 const newCell = `${newCol},${newRow}`;
-                if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows && (this.#tiles[newCol][newRow]=="parcelSpawner" || this.#tiles[newCol][newRow]=="delivery") && !visited.has(newCell)) {
+                if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows 
+                    && (this.#tiles[newCol][newRow]=="parcelSpawner" || this.#tiles[newCol][newRow]=="delivery") 
+                    && !agentsMap[newCol][newRow]
+                    && !visited.has(newCell)) {
+
                     queue.push([newCol, newRow]);
                     visited.add(newCell); // Mark new cell as visited
                     erdos[newCell] = erdos[`${col},${row}`] + 1;
@@ -106,7 +111,25 @@ export class TileMap {
         return [-1,[],[]]; // No path found
     }
     
+    createAgentsMap(agentsPerceived) {
+        let agentsMap = [];
 
+        const width = this.#width;
+        const height = this.#height;
+
+        for(let x=0; x<width; x++) {
+            agentsMap[x] = new Array(height).fill(false);
+        }
+
+        for (let [key, value] of agentsPerceived) {
+            const x = Math.round(value.x);
+            const y = Math.round(value.y);
+
+            agentsMap[x][y] = true;
+        }
+
+        return agentsMap;
+    }
 
 
     printDebug() {
