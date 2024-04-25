@@ -6,6 +6,13 @@ export class Agent {
     #serverUrl;
     #client;
 
+    // Debug Flags
+    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
+    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
+    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
+    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
+
     // Agent info
     #agentToken;
     #id;
@@ -79,6 +86,34 @@ export class Agent {
         }
     }
 
+    async testLoop () {
+
+        let client = this.#client;
+    
+        while (this.#map == undefined) {
+            await client.timer(1000);
+        }
+        
+        let destination = [3,9]; //You can change me :)
+        while(true){
+            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
+    
+            if(this.#pathBetweenTilesVerbose){
+                console.log("Distance "+distance);
+                console.log("path "+path);
+                //console.log("directions "+directions);   
+                console.log("next direction "+directions[0]); 
+            }
+    
+            if(distance < 0){
+                console.log("ERROR, it's not possible to reach "+destination);
+                await client.timer(500);
+            }else{
+                await client.move( directions[0] );          
+            }    
+        }
+    }
+
     /**
      * @returns the token of this agent.
      */
@@ -104,7 +139,7 @@ export class Agent {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
-            this.#map.printDebug();
+            if(this.#onMapVerbose) this.#map.printDebug();
 
         })
 
@@ -120,7 +155,7 @@ export class Agent {
             this.#yPos = y;
             this.#score = score;
 
-            this.printDebug();
+            if(this.#onYouVerbose) this.printDebug();
         } )
 
         /**
@@ -134,7 +169,7 @@ export class Agent {
             for (const parcel of perceivedParcels)
                 this.#perceivedParcels.set(parcel.id, parcel);
             
-            this.printPerceivedParcels();
+            if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         })
 
@@ -149,7 +184,7 @@ export class Agent {
             for (const agent of perceivedAgents)
                 this.#perceivedAgents.set(agent.id, agent);
             
-            this.printPerceivedAgents();
+                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
 

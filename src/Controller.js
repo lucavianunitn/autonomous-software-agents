@@ -36,7 +36,7 @@ export class Controller {
 
     startAgent(agentIndex) {
 
-        this.#agents[agentIndex].randomLoop();
+        this.#agents[agentIndex].testLoop();
 
     }
 
