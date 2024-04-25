@@ -7,11 +7,11 @@ export class Agent {
     #client;
 
     // Debug Flags
-    #onYouVerbose = false;
-    #onMapVerbose = false;
-    #onParcelsSensingVerbose = false;
-    #onAgentsSensingVerbose = true;
-    #pathBetweenTilesVerbose = true;
+    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
+    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
+    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
+    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
 
     // Agent info
     #agentToken;
@@ -101,14 +101,14 @@ export class Agent {
             if(this.#pathBetweenTilesVerbose){
                 console.log("Distance "+distance);
                 console.log("path "+path);
-                //console.log("directions "+directions);    
+                //console.log("directions "+directions);   
+                console.log("next direction "+directions[0]); 
             }
     
             if(distance < 0){
                 console.log("ERROR, it's not possible to reach "+destination);
                 await client.timer(500);
             }else{
-                console.log("next direction "+directions[0]);
                 await client.move( directions[0] );          
             }    
         }

@@ -44,9 +44,7 @@ export class TileMap {
         start = start.map(function(coordinate){ // to avoid that start contains partial positions
             return Math.round(coordinate);
         });
-    
-        console.log("Moving from "+start+" to "+end);
-    
+        
         const cols = this.#width;
         const rows = this.#height;
     
