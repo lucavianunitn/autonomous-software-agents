@@ -1,20 +1,14 @@
 import { DeliverooApi, timer } from "../../Deliveroo.js/packages/@unitn-asa/deliveroo-js-client/index.js";
 import { TileMap } from "./TileMap.js";
+import { EventEmitter } from "events";
 
 export class Agent {
 
     #serverUrl;
     #client;
 
-    // Debug Flags
-    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
-    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
-    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
-    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
-    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
-
     // Agent info
-    #agentToken;
+    #agentToken
     #id;
     #name;
     #xPos;
@@ -23,19 +17,37 @@ export class Agent {
 
     #map;
 
-    #perceivedParcels;
-    #perceivedAgents;
+    // Debug Flags
+    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
+    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
+    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
+    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
+
+    #eventEmitter = new EventEmitter();
+    #perceivedParcels = new Map();
+    #perceivedAgents = new Map();
 
     constructor(serverUrl, agentToken) {
 
-        this.#agentToken = agentToken;
-        this.#serverUrl = serverUrl;
         this.#client = new DeliverooApi(serverUrl, agentToken);
 
-        this.#perceivedParcels = new Map();
-        this.#perceivedAgents = new Map();
+        this.#agentToken = agentToken;
+        this.#serverUrl = serverUrl;
 
         this.setupClient();
+
+        this.#eventEmitter.on("restart", this.start.bind(this));
+
+    }
+
+    async start() 
+    {
+        if (this.#map === undefined || this.#perceivedParcels.size === 0)
+            await this.randomLoop();
+      
+        await this.goToNearestParcel();
+
     }
 
     /**
@@ -48,6 +60,14 @@ export class Agent {
         let previous = 'right';
     
         while ( true ) {
+
+            if (this.#map !== undefined && this.#perceivedParcels.size > 0) {
+
+                console.log(this.#map !== undefined);
+                console.log(this.#perceivedParcels.size > 0);
+                this.#eventEmitter.emit("restart");
+                break;
+            }
     
             await client.putdown();
     
@@ -86,6 +106,53 @@ export class Agent {
         }
     }
 
+    async goToNearestParcel() {
+
+        let client = this.#client;
+
+        let nX, nY = null;
+        let nDistance = null;
+
+        let agentThis = this;
+
+        this.#perceivedParcels.forEach(function(parcel) {
+
+            let [distance, path, directions] = agentThis.#map.pathBetweenTiles([agentThis.#xPos,agentThis.#yPos], [parcel.x,parcel.y], agentThis.#perceivedAgents);
+
+            if (nDistance === null || distance < nDistance) {
+
+                nDistance = distance;
+                nX = parcel.x;
+                nY = parcel.y;
+
+            }
+
+        })
+
+        let destination = [nX,nY];
+        while(true){
+            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
+    
+            if(this.#pathBetweenTilesVerbose){
+                console.log("Distance "+distance);
+                console.log("path "+path);
+                //console.log("directions "+directions);   
+                console.log("next direction "+directions[0]); 
+            }
+    
+            if(distance < 0){
+                console.log("ERROR, it's not possible to reach "+destination);
+                await client.timer(500);
+            }else{
+                await client.move( directions[0] );          
+            }    
+        }
+
+    }
+
+
+
+
     async testLoop () {
 
         let client = this.#client;
@@ -94,7 +161,7 @@ export class Agent {
             await client.timer(1000);
         }
         
-        let destination = [3,9]; //You can change me :)
+        let destination = [1,5]; //You can change me :)
         while(true){
             let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
     
