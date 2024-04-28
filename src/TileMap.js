@@ -4,6 +4,7 @@ export class TileMap {
     #height;
 
     #tiles = [];
+    #deliveryTiles = [];
 
     constructor(width, height, tiles) {
         this.#width = width;
@@ -25,6 +26,9 @@ export class TileMap {
             let parcelSpawner = tile["parcelSpawner"];
 
             this.#tiles[x][y] = delivery ? "delivery" : "parcelSpawner";
+            
+            if (delivery)
+                this.#deliveryTiles.push({x:x,y:y});
         });
 
     }
@@ -44,7 +48,7 @@ export class TileMap {
         start = start.map(function(coordinate){ // to avoid that start contains partial positions
             return Math.round(coordinate);
         });
-        
+   
         const cols = this.#width;
         const rows = this.#height;
     
@@ -129,6 +133,32 @@ export class TileMap {
         return agentsMap;
     }
 
+    getDeliveryTiles() {
+        return this.#deliveryTiles;
+    }
+
+    getNearestDelivery(x, y, agentsPerceived) {
+
+        let minDistance = Infinity;
+        let coords = null;
+
+        for (const deliveryTile of this.#deliveryTiles) {
+
+            let [distance, path, distances] = this.pathBetweenTiles([x,y], [deliveryTile.x, deliveryTile.y], agentsPerceived);
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                coords = {x:deliveryTile.x, y:deliveryTile.y};
+            }
+
+        }
+
+        console.log("ON Tilemap");
+        console.log(coords);
+
+        return [coords, minDistance];
+
+    }
 
     printDebug() {
 
