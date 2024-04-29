@@ -43,32 +43,16 @@ export class Agent {
 
     async start() 
     {
-        if (this.#map === undefined || this.#perceivedParcels.size === 0) {
-
-            console.log("oss");
-
+        if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
+            console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
             await this.randomLoop();
-
         }
         else {
-
-            console.log("asd");
-
-            let [bestParcelId, bestDelivery] = this.getBestParcel();
-            let bestParcel = this.#perceivedParcels.get(bestParcelId);
-
-            console.log("ON Start");
-            console.log(bestDelivery);
-
-            await this.goTo(bestParcel.x,bestParcel.y);
-            await this.#client.pickup();
-            await this.goTo(bestDelivery.x, bestDelivery.y);
-            await this.#client.putdown();
-
+            console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+            await this.pickupAndDeliveryStrategy();
         }
 
         this.#eventEmitter.emit("restart");
-
     }
 
     /**
@@ -82,8 +66,8 @@ export class Agent {
     
         while ( true ) {
 
-            if (this.#map !== undefined && this.#perceivedParcels.size > 0) {
-                this.#eventEmitter.emit("restart");
+            if (this.#map !== undefined && this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
+                console.log("END random loop");
                 break;
             }
     
@@ -103,7 +87,7 @@ export class Agent {
                 if ( ! tried.includes(current) ) {
                     
                     if ( await client.move( current ) ) {
-                        console.log( 'moved %s\n', current );
+                        //console.log( 'moved %s', current );
                         previous = current;
                         break; // moved, continue
                     }
@@ -118,9 +102,34 @@ export class Agent {
                 console.log( 'stucked' );
                 await client.timer(1000); // stucked, wait 1 sec and retry
             }
-    
-    
         }
+        return Promise.resolve(1);
+    }
+
+    /**
+     * It finds the coordinates of the most rewardable parcel and of the nearest delivery tile to it, 
+     * and it tries to do the pickup and delivery of that parcel
+     */
+    async pickupAndDeliveryStrategy () {
+        let client = this.#client;
+        let [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
+
+        if (bestScore === 0){ // No package found
+            await client.timer(1000);
+            return;
+        }
+
+        let bestParcel = this.#perceivedParcels.get(bestParcelId);
+
+        console.log("GOTO PARCEL ")
+        if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
+        await this.#client.pickup();
+
+        console.log("GOTO DELIVERY")
+        if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0);
+        await this.#client.putdown();
+
+        return Promise.resolve(1);
     }
 
     async goTo(x,y) {
@@ -128,25 +137,30 @@ export class Agent {
         let client = this.#client;
 
         let destination = [x,y];
+
         while(true){
             let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
     
             if(this.#pathBetweenTilesVerbose){
                 console.log("Distance "+distance);
-                console.log("path "+path);
+                console.log("Destination "+destination)
+                //console.log("path "+path);
                 //console.log("directions "+directions);   
-                console.log("next direction "+directions[0]); 
+                //console.log("next direction "+directions[0]); 
             }
-
-            console.log(distance);
     
             if (distance === 0) {
+                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
+                    await client.timer(500); // Waiting allow the agent to pickup the package
+                }
                 return Promise.resolve(1);
             }
             else if(distance < 0){
                 console.log("ERROR, it's not possible to reach "+destination);
-                await client.timer(500);
+                return Promise.resolve(0);
             }else{
+                await client.putdown();
+                await client.pickup();
                 await client.move( directions[0] );          
             }    
         }
@@ -214,16 +228,11 @@ export class Agent {
 
             let parcelReward = parcel.reward;
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
-            let [coords, parcelNearestDelivery] = map.getNearestDelivery(parcel.x, parcel.y, perceivedAgents);
-            
-            console.log("ON BestParcel");
-            console.log(coords);
+            let [coords, parcelNearestDeliveryDistance] = map.getNearestDelivery(parcel.x, parcel.y, perceivedAgents);
 
-            let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDelivery;
+            let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
 
-            console.log(parcelScore);
-
-            if (parcelScore > bestScore) {
+            if (parcelScore > bestScore && parcelAgentDistance >= 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
                 bestScore = parcelScore;
                 bestParcel = parcelId;
                 bestDelivery = coords;
@@ -231,7 +240,7 @@ export class Agent {
 
         })
 
-        return [bestParcel, bestDelivery];
+        return [bestScore, bestParcel, bestDelivery];
 
     }
 

@@ -146,15 +146,12 @@ export class TileMap {
 
             let [distance, path, distances] = this.pathBetweenTiles([x,y], [deliveryTile.x, deliveryTile.y], agentsPerceived);
 
-            if (distance < minDistance) {
+            if (distance < minDistance && distance >= 0) { // second condition in order to avoid busy delivery tiles
                 minDistance = distance;
                 coords = {x:deliveryTile.x, y:deliveryTile.y};
             }
 
         }
-
-        console.log("ON Tilemap");
-        console.log(coords);
 
         return [coords, minDistance];
 
