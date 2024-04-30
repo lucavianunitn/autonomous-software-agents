@@ -1,20 +1,14 @@
 import { DeliverooApi, timer } from "../../Deliveroo.js/packages/@unitn-asa/deliveroo-js-client/index.js";
 import { TileMap } from "./TileMap.js";
+import { EventEmitter } from "events";
 
 export class Agent {
 
     #serverUrl;
     #client;
 
-    // Debug Flags
-    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
-    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
-    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
-    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
-    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
-
     // Agent info
-    #agentToken;
+    #agentToken
     #id;
     #name;
     #xPos;
@@ -23,19 +17,42 @@ export class Agent {
 
     #map;
 
-    #perceivedParcels;
-    #perceivedAgents;
+    // Debug Flags
+    #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
+    #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
+    #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
+    #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
+
+    #eventEmitter = new EventEmitter();
+    #perceivedParcels = new Map();
+    #perceivedAgents = new Map();
 
     constructor(serverUrl, agentToken) {
 
-        this.#agentToken = agentToken;
-        this.#serverUrl = serverUrl;
         this.#client = new DeliverooApi(serverUrl, agentToken);
 
-        this.#perceivedParcels = new Map();
-        this.#perceivedAgents = new Map();
+        this.#agentToken = agentToken;
+        this.#serverUrl = serverUrl;
 
         this.setupClient();
+
+        this.#eventEmitter.on("restart", this.start.bind(this));
+
+    }
+
+    async start() 
+    {
+        if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
+            console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+            await this.randomLoop();
+        }
+        else {
+            console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+            await this.pickupAndDeliveryStrategy();
+        }
+
+        this.#eventEmitter.emit("restart");
     }
 
     /**
@@ -48,9 +65,13 @@ export class Agent {
         let previous = 'right';
     
         while ( true ) {
+
+            if (this.#map !== undefined && this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
+                console.log("END random loop");
+                break;
+            }
     
             await client.putdown();
-    
             await client.pickup();
     
             let tried = [];
@@ -66,7 +87,7 @@ export class Agent {
                 if ( ! tried.includes(current) ) {
                     
                     if ( await client.move( current ) ) {
-                        console.log( 'moved %s\n', current );
+                        //console.log( 'moved %s', current );
                         previous = current;
                         break; // moved, continue
                     }
@@ -81,20 +102,95 @@ export class Agent {
                 console.log( 'stucked' );
                 await client.timer(1000); // stucked, wait 1 sec and retry
             }
-    
-    
         }
+        return Promise.resolve(1);
     }
 
-    async testLoop () {
+    /**
+     * It finds the coordinates of the most rewardable parcel and of the nearest delivery tile to it, 
+     * and it tries to do the pickup and delivery of that parcel
+     */
+    async pickupAndDeliveryStrategy () {
+        let client = this.#client;
+        let [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
+
+        if (bestScore === 0){ // No package found
+            await client.timer(1000);
+            return;
+        }
+
+        let bestParcel = this.#perceivedParcels.get(bestParcelId);
+
+        console.log("GOTO PARCEL ")
+        if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
+        await this.#client.pickup();
+
+        console.log("GOTO DELIVERY")
+        if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0);
+        await this.#client.putdown();
+
+        return Promise.resolve(1);
+    }
+
+    async goTo(x,y) {
 
         let client = this.#client;
+
+        let destination = [x,y];
+
+        while(true){
+            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
     
-        while (this.#map == undefined) {
-            await client.timer(1000);
+            if(this.#pathBetweenTilesVerbose){
+                console.log("Distance "+distance);
+                console.log("Destination "+destination)
+                //console.log("path "+path);
+                //console.log("directions "+directions);   
+                //console.log("next direction "+directions[0]); 
+            }
+    
+            if (distance === 0) {
+                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
+                    await client.timer(500); // Waiting allow the agent to pickup the package
+                }
+                return Promise.resolve(1);
+            }
+            else if(distance < 0){
+                console.log("ERROR, it's not possible to reach "+destination);
+                return Promise.resolve(0);
+            }else{
+                await client.putdown();
+                await client.pickup();
+                await client.move( directions[0] );          
+            }    
         }
-        
-        let destination = [3,9]; //You can change me :)
+
+    }
+
+    async goToNearestParcel() {
+
+        let client = this.#client;
+
+        let nX, nY = null;
+        let nDistance = null;
+
+        let agentThis = this;
+
+        this.#perceivedParcels.forEach(function(parcel) {
+
+            let [distance, path, directions] = agentThis.#map.pathBetweenTiles([agentThis.#xPos,agentThis.#yPos], [parcel.x,parcel.y], agentThis.#perceivedAgents);
+
+            if (nDistance === null || distance < nDistance) {
+
+                nDistance = distance;
+                nX = parcel.x;
+                nY = parcel.y;
+
+            }
+
+        })
+
+        let destination = [nX,nY];
         while(true){
             let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
     
@@ -112,6 +208,40 @@ export class Agent {
                 await client.move( directions[0] );          
             }    
         }
+
+    }
+
+    getBestParcel() {
+
+        let agentX = this.#xPos;
+        let agentY = this.#yPos;
+        let map = this.#map;
+        let perceivedAgents = this.#perceivedAgents;
+
+        let bestScore = 0;
+        let bestParcel = null;
+        let bestDelivery = null;
+
+        this.#perceivedParcels.forEach(function(parcel) {
+
+            let parcelId = parcel.id;
+
+            let parcelReward = parcel.reward;
+            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
+            let [coords, parcelNearestDeliveryDistance] = map.getNearestDelivery(parcel.x, parcel.y, perceivedAgents);
+
+            let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
+
+            if (parcelScore > bestScore && parcelAgentDistance >= 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
+                bestScore = parcelScore;
+                bestParcel = parcelId;
+                bestDelivery = coords;
+            }
+
+        })
+
+        return [bestScore, bestParcel, bestDelivery];
+
     }
 
     /**
