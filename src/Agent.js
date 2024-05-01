@@ -20,6 +20,7 @@ export class Agent {
     #eventEmitter = new EventEmitter();
     #perceivedParcels = new Map();
     #perceivedAgents = new Map();
+    #carriedReward = 0;
 
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
@@ -42,14 +43,22 @@ export class Agent {
 
     async start() {
 
-        if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
-            console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
-            await this.planSearchInCenter();
-            await this.planRandomLoop();
+        try {
+
+            if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
+                console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+                await this.planSearchInCenter();
+                await this.planRandomLoop();
+            }
+            else {
+                console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+                await this.planPickUpAndDeliver();
+            }
+
         }
-        else {
-            console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
-            await this.planPickUpAndDeliver();
+        catch(error) {
+            await this.#client.timer(1000);
+            await this.planRandomLoop();
         }
 
         this.#eventEmitter.emit("restart");
@@ -98,8 +107,8 @@ export class Agent {
                 console.log("ERROR, it's not possible to reach "+destination);
                 return Promise.resolve(0);
             }else{
-                await client.putdown();
-                await client.pickup();
+                await this.putDown();
+                await this.pickUp();
                 await client.move(directions[0]);          
             }    
         }
@@ -126,8 +135,8 @@ export class Agent {
                 return Promise.resolve(1);
             }
     
-            await client.putdown();
-            await client.pickup();
+            await this.putDown();
+            await this.pickUp();
     
             let tried = [];
     
@@ -180,11 +189,11 @@ export class Agent {
 
         console.log("planPickUpAndDeliver: GOTO PARCEL ")
         if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
-        await client.pickup();
+        await this.pickUp();
 
         console.log("planPickUpAndDeliver: GOTO DELIVERY")
         if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0);
-        await client.putdown();
+        await this.putDown();
 
         return Promise.resolve(1);
     }
@@ -216,12 +225,35 @@ export class Agent {
                 console.log("ERROR, it's not possible to reach "+destination);
                 return Promise.resolve(0);
             }else{
-                await client.putdown();
-                await client.pickup();
-                await client.move( directions[0] );          
+                await this.putDown();
+                await this.pickUp();
+                await client.move(directions[0]);          
             }    
         }
 
+    }
+
+    async pickUp() {
+
+        const thisAgent = this;
+        const client = this.#client;
+        const pickUpResult = await client.pickup();
+
+        pickUpResult.forEach(function(result){
+            thisAgent.#carriedReward += result.reward;
+        })
+
+        return pickUpResult;
+    }
+
+    async putDown() {
+
+        const client = this.#client;
+        const putDownResult = await client.putdown();
+
+        this.#carriedReward = 0;
+
+        return putDownResult;
     }
 
     getBestParcel() {
