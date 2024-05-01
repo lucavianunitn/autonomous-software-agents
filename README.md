@@ -1,5 +1,7 @@
 # autonomous-software-agents
 
+Command to start agent : node --env-file=.env index.js
+
 
 Steps package-related:
 1) Compute agent-package distance

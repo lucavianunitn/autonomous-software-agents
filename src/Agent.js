@@ -17,16 +17,16 @@ export class Agent {
 
     #map;
 
+    #eventEmitter = new EventEmitter();
+    #perceivedParcels = new Map();
+    #perceivedAgents = new Map();
+
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
     #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
     #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
     #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
-
-    #eventEmitter = new EventEmitter();
-    #perceivedParcels = new Map();
-    #perceivedAgents = new Map();
 
     constructor(serverUrl, agentToken) {
 
@@ -38,37 +38,92 @@ export class Agent {
         this.setupClient();
 
         this.#eventEmitter.on("restart", this.start.bind(this));
-
     }
 
-    async start() 
-    {
+    async start() {
+
         if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
             console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
-            await this.randomLoop();
+            await this.planSearchInCenter();
+            await this.planRandomLoop();
         }
         else {
             console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
-            await this.pickupAndDeliveryStrategy();
+            await this.planPickUpAndDeliver();
         }
 
         this.#eventEmitter.emit("restart");
     }
 
     /**
+     * Plan to search for parcels while going to the center of the map.
+     * Plan doesn't start if TileMap is not defined.
+     * Plan stops when found a parcel or when the centered tile is reached.
+     * @returns 
+     */
+    async planSearchInCenter() {
+
+        console.log("START planSearchInCenter");
+
+        const client = this.#client;
+        const map = this.#map;
+
+        if (map === undefined) {
+            console.log("END planSearchInCenter (no map)");
+            return Promise.resolve(1);
+        }
+
+        const centeredTile = map.getCenteredTile();
+        const destination = [centeredTile.x,centeredTile.y];
+
+        while(true){
+
+            // Found a parcel
+            if (this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
+                console.log("END planSearchInCenter (found parcel)");
+                return Promise.resolve(1);
+            }
+
+            let [distance, path, directions] = map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
+    
+            // Reached center
+            if (distance === 0) {
+                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
+                    await client.timer(500); // Waiting allow the agent to pickup the package
+                }
+                console.log("END planSearchInCenter (reached center)");
+                return Promise.resolve(1);
+            }
+            else if(distance < 0){
+                console.log("ERROR, it's not possible to reach "+destination);
+                return Promise.resolve(0);
+            }else{
+                await client.putdown();
+                await client.pickup();
+                await client.move(directions[0]);          
+            }    
+        }
+
+    }
+
+    /**
      * starts a loop of random movements of the agents. Every movement includes the actions of putting down and picking up
      * a parcel.
      */
-    async randomLoop () {
+    async planRandomLoop() {
 
-        let client = this.#client;
+        console.log("START planRandomLoop");
+
+        const client = this.#client;
+
         let previous = 'right';
     
-        while ( true ) {
+        while (true) {
 
+            // TileMap is defined and found a parcel
             if (this.#map !== undefined && this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
-                console.log("END random loop");
-                break;
+                console.log("END planRandomLoop (TileMap defined and parcel found)");
+                return Promise.resolve(1);
             }
     
             await client.putdown();
@@ -76,69 +131,71 @@ export class Agent {
     
             let tried = [];
     
-            while ( tried.length < 4 ) {
+            while (tried.length < 4) {
                 
-                let current = { up: 'down', right: 'left', down: 'up', left: 'right' }[previous] // backward
+                let current = {up: 'down', right: 'left', down: 'up', left: 'right'}[previous] // backward
     
-                if ( tried.length < 3 ) { // try haed or turn (before going backward)
-                    current = [ 'up', 'right', 'down', 'left' ].filter( d => d != current )[ Math.floor(Math.random()*3) ];
-                }
+                if (tried.length < 3) // try haed or turn (before going backward)
+                    current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random()*3)];
                 
-                if ( ! tried.includes(current) ) {
+                if (! tried.includes(current)) {
                     
-                    if ( await client.move( current ) ) {
+                    if (await client.move(current)) {
                         //console.log( 'moved %s', current );
                         previous = current;
                         break; // moved, continue
                     }
                     
-                    tried.push( current );
+                    tried.push(current);
                     
                 }
                 
             }
     
-            if ( tried.length == 4 ) {
-                console.log( 'stucked' );
+            if (tried.length == 4) {
+                console.log('planRandomLoop: Stucked');
                 await client.timer(1000); // stucked, wait 1 sec and retry
             }
         }
-        return Promise.resolve(1);
     }
 
     /**
      * It finds the coordinates of the most rewardable parcel and of the nearest delivery tile to it, 
      * and it tries to do the pickup and delivery of that parcel
      */
-    async pickupAndDeliveryStrategy () {
-        let client = this.#client;
-        let [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
+    async planPickUpAndDeliver() {
+
+        console.log("START planPickUpAndDeliver");
+
+        const client = this.#client;
+        const [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
 
         if (bestScore === 0){ // No package found
-            await client.timer(1000);
-            return;
+            await client.timer(500);
+            console.log("END planPickUpAndDeliver (no best parcel)");
+            return Promise.resolve(1);
         }
 
-        let bestParcel = this.#perceivedParcels.get(bestParcelId);
+        const bestParcel = this.#perceivedParcels.get(bestParcelId);
 
-        console.log("GOTO PARCEL ")
+        console.log("planPickUpAndDeliver: GOTO PARCEL ")
         if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
-        await this.#client.pickup();
+        await client.pickup();
 
-        console.log("GOTO DELIVERY")
+        console.log("planPickUpAndDeliver: GOTO DELIVERY")
         if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0);
-        await this.#client.putdown();
+        await client.putdown();
 
         return Promise.resolve(1);
     }
 
     async goTo(x,y) {
 
-        let client = this.#client;
-
-        let destination = [x,y];
+        const client = this.#client;
+        const destination = [x,y];
 
         while(true){
+
             let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
     
             if(this.#pathBetweenTilesVerbose){
@@ -161,50 +218,6 @@ export class Agent {
             }else{
                 await client.putdown();
                 await client.pickup();
-                await client.move( directions[0] );          
-            }    
-        }
-
-    }
-
-    async goToNearestParcel() {
-
-        let client = this.#client;
-
-        let nX, nY = null;
-        let nDistance = null;
-
-        let agentThis = this;
-
-        this.#perceivedParcels.forEach(function(parcel) {
-
-            let [distance, path, directions] = agentThis.#map.pathBetweenTiles([agentThis.#xPos,agentThis.#yPos], [parcel.x,parcel.y], agentThis.#perceivedAgents);
-
-            if (nDistance === null || distance < nDistance) {
-
-                nDistance = distance;
-                nX = parcel.x;
-                nY = parcel.y;
-
-            }
-
-        })
-
-        let destination = [nX,nY];
-        while(true){
-            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-    
-            if(this.#pathBetweenTilesVerbose){
-                console.log("Distance "+distance);
-                console.log("path "+path);
-                //console.log("directions "+directions);   
-                console.log("next direction "+directions[0]); 
-            }
-    
-            if(distance < 0){
-                console.log("ERROR, it's not possible to reach "+destination);
-                await client.timer(500);
-            }else{
                 await client.move( directions[0] );          
             }    
         }
@@ -250,7 +263,6 @@ export class Agent {
     getAgentToken() {
 
         return this.#agentToken;
-
     }
     
     /**
@@ -317,9 +329,6 @@ export class Agent {
                 if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
-
-
-
     }
 
     printDebug() {
@@ -333,7 +342,6 @@ export class Agent {
         console.log(`- score = ${this.#score}`);
         console.log("}");
         console.log();
-
     }
 
     printPerceivedParcels() {
@@ -341,7 +349,6 @@ export class Agent {
         console.log(`Agent '${this.#name}' perceived parcels map:`);
         console.log(this.#perceivedParcels);
         console.log();
-
     }
 
     printPerceivedAgents() {
@@ -349,7 +356,6 @@ export class Agent {
         console.log(`Agent '${this.#name}' perceived agents map:`);
         console.log(this.#perceivedAgents);
         console.log();
-
     }
 
 }
