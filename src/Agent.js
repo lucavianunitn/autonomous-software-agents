@@ -21,6 +21,7 @@ export class Agent {
     #perceivedParcels = new Map();
     #perceivedAgents = new Map();
     #carriedReward = 0;
+    #carriedPackages = 0;
 
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
@@ -42,17 +43,18 @@ export class Agent {
     }
 
     async start() {
-
         try {
-
-            if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
+            if (this.#carriedPackages >= 3 || (this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0)) {
+                console.log("Package delivery strategy chosen");
+                await this.planDelivery();
+            } else if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
                 console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
                 await this.planSearchInCenter();
                 await this.planRandomLoop();
             }
             else {
-                console.log("Package delivery strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
-                await this.planPickUpAndDeliver();
+                console.log("Package pickup strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+                await this.planPickUp();
             }
 
         }
@@ -172,33 +174,47 @@ export class Agent {
      * It finds the coordinates of the most rewardable parcel and of the nearest delivery tile to it, 
      * and it tries to do the pickup and delivery of that parcel
      */
-    async planPickUpAndDeliver() {
+    async planPickUp() {
 
-        console.log("START planPickUpAndDeliver");
+        console.log("START planPickUp");
 
         const client = this.#client;
         const [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
 
         if (bestScore === 0){ // No package found
             await client.timer(500);
-            console.log("END planPickUpAndDeliver (no best parcel)");
+            console.log("END planPickUp (no best parcel)");
             return Promise.resolve(1);
         }
 
         const bestParcel = this.#perceivedParcels.get(bestParcelId);
 
-        console.log("planPickUpAndDeliver: GOTO PARCEL ")
+        console.log("planPickUp: GOTO PARCEL ")
         if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
         await this.pickUp();
 
-        console.log("planPickUpAndDeliver: GOTO DELIVERY")
-        if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0);
+        return Promise.resolve(1);
+    }
+
+    async planDelivery() {
+
+        console.log("START planDelivery");
+        let agentX = this.#xPos;
+        let agentY = this.#yPos;
+        let map = this.#map;
+        let perceivedAgents = this.#perceivedAgents;
+
+        let [bestDelivery, distance] = map.getNearestDelivery(agentX, agentY, perceivedAgents);
+
+        if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
         await this.putDown();
 
         return Promise.resolve(1);
     }
 
-    async goTo(x,y) {
+
+
+    async goTo(x, y) {
 
         const client = this.#client;
         const destination = [x,y];
@@ -206,7 +222,7 @@ export class Agent {
         while(true){
 
             let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-    
+
             if(this.#pathBetweenTilesVerbose){
                 console.log("Distance "+distance);
                 console.log("Destination "+destination)
@@ -241,6 +257,7 @@ export class Agent {
 
         pickUpResult.forEach(function(result){
             thisAgent.#carriedReward += result.reward;
+            thisAgent.#carriedPackages += 1;
         })
 
         return pickUpResult;
@@ -252,6 +269,7 @@ export class Agent {
         const putDownResult = await client.putdown();
 
         this.#carriedReward = 0;
+        this.#carriedPackages = 0;
 
         return putDownResult;
     }
@@ -277,7 +295,7 @@ export class Agent {
 
             let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
 
-            if (parcelScore > bestScore && parcelAgentDistance >= 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
+            if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
                 bestScore = parcelScore;
                 bestParcel = parcelId;
                 bestDelivery = coords;
