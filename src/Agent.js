@@ -44,7 +44,7 @@ export class Agent {
 
     async start() {
         try {
-            if (this.#carriedPackages >= 3 || (this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0)) {
+            if (this.#map !== undefined && this.#carriedPackages !== 0 && (this.#carriedPackages >= 3 || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0)) {
                 console.log("Package delivery strategy chosen");
                 await this.planDelivery();
             } else if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
