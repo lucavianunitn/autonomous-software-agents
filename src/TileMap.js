@@ -113,6 +113,9 @@ export class TileMap {
         return [-1,[],[]]; // No path found
     }
     
+    /**
+     * By iterating on the single agents, it creates a height x length map with true where an agent is perceived
+     */
     createAgentsMap(agentsPerceived) {
         let agentsMap = [];
 
@@ -137,7 +140,10 @@ export class TileMap {
         return this.#deliveryTiles;
     }
 
-    getNearestDelivery(x, y, agentsPerceived) {
+    /**
+     * Returns the nearest delivery tile starting from the given tile
+     */
+    getNearestDelivery([x,y], agentsPerceived) {
 
         let minDistance = Infinity;
         let coords = null;
@@ -153,7 +159,7 @@ export class TileMap {
 
         }
 
-        return [coords, minDistance];
+        return [minDistance, coords];
 
     }
 

@@ -21,7 +21,7 @@ export class Agent {
     #perceivedParcels = new Map();
     #perceivedAgents = new Map();
     #carriedReward = 0;
-    #carriedPackages = 0;
+    #carriedParcels = 0;
 
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
@@ -29,6 +29,7 @@ export class Agent {
     #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
     #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
+    #strategyChosenVerbose = process.env.STRATEGY_CHOSEN_VERBOSE === "true"
 
     constructor(serverUrl, agentToken) {
 
@@ -42,18 +43,41 @@ export class Agent {
         this.#eventEmitter.on("restart", this.start.bind(this));
     }
 
+    /**
+     * It chooses the strategy to follow based on the enviroment status the agent can perceive
+     */
     async start() {
         try {
-            if (this.#map !== undefined && this.#carriedPackages !== 0 && (this.#carriedPackages >= 3 || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0)) {
-                console.log("Package delivery strategy chosen");
+            let [bestParcelProfit, bestParcelId, bestDeliveryTile] = this.getBestParcel();
+
+            let isMapDefined = this.#map !== undefined
+            let isAnyParcelPerceived = this.#perceivedParcels.size !== 0
+            let isThereProfitableParcel = bestParcelProfit !== 0
+            let areCarriedParcelsDeliveryThreshold = this.#carriedParcels !== 0 && this.#carriedParcels >= 3
+
+            // if map is defined and:
+            // I have less than 4 parcels but at least one OR
+            // I have at least a parcel and I dindn't see anything other valuable
+            if (isMapDefined && (areCarriedParcelsDeliveryThreshold || (this.#carriedParcels !== 0 && (!isAnyParcelPerceived || !isThereProfitableParcel)))) {
+                console.log("isAnyParcelPerceived "+isAnyParcelPerceived)
+                if(this.#strategyChosenVerbose){
+                    console.log("Parcel DELIVERY strategy chosen");
+                }
+
                 await this.planDelivery();
-            } else if (this.#map === undefined || this.#perceivedParcels.size === 0 || this.getBestParcel()[0] === 0) {
-                console.log("Random Loop chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+            } else if (!isMapDefined || !isAnyParcelPerceived || !isThereProfitableParcel) {
+                if(this.#strategyChosenVerbose){
+                    console.log("CENTER/RANDOM strategy chosen");
+                }
+
                 await this.planSearchInCenter();
                 await this.planRandomLoop();
             }
             else {
-                console.log("Package pickup strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+this.getBestParcel()[0]);
+                if(this.#strategyChosenVerbose){
+                    console.log("Parcel PICKUP strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+bestParcelProfit);
+                }
+
                 await this.planPickUp();
             }
 
@@ -100,7 +124,7 @@ export class Agent {
             // Reached center
             if (distance === 0) {
                 if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the package
+                    await client.timer(500); // Waiting allow the agent to pickup the parcel
                 }
                 console.log("END planSearchInCenter (reached center)");
                 return Promise.resolve(1);
@@ -171,8 +195,8 @@ export class Agent {
     }
 
     /**
-     * It finds the coordinates of the most rewardable parcel and of the nearest delivery tile to it, 
-     * and it tries to do the pickup and delivery of that parcel
+     * It finds the coordinates of the most rewardable parcel, 
+     * and it tries to do its pickup
      */
     async planPickUp() {
 
@@ -181,7 +205,7 @@ export class Agent {
         const client = this.#client;
         const [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
 
-        if (bestScore === 0){ // No package found
+        if (bestScore === 0){ // No parcel found
             await client.timer(500);
             console.log("END planPickUp (no best parcel)");
             return Promise.resolve(1);
@@ -189,13 +213,17 @@ export class Agent {
 
         const bestParcel = this.#perceivedParcels.get(bestParcelId);
 
-        console.log("planPickUp: GOTO PARCEL ")
         if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
         await this.pickUp();
 
+        console.log("END planPickUp (parcel's cell reached)");
         return Promise.resolve(1);
     }
 
+    /**
+     * It finds the coordinates of the nearest delivery tile, 
+     * and it tries to do its parcels putdown
+     */
     async planDelivery() {
 
         console.log("START planDelivery");
@@ -204,16 +232,19 @@ export class Agent {
         let map = this.#map;
         let perceivedAgents = this.#perceivedAgents;
 
-        let [bestDelivery, distance] = map.getNearestDelivery(agentX, agentY, perceivedAgents);
+        let [distance, bestDelivery] = map.getNearestDelivery([agentX, agentY], perceivedAgents);
 
         if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
         await this.putDown();
 
+        console.log("END planDelivery");
         return Promise.resolve(1);
     }
 
 
-
+    /**
+     * It will move the agent to the tile [x,y] by also considering the map structure and the presence of other agents
+     */
     async goTo(x, y) {
 
         const client = this.#client;
@@ -233,7 +264,7 @@ export class Agent {
     
             if (distance === 0) {
                 if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the package
+                    await client.timer(500); // Waiting allow the agent to pickup the parcel
                 }
                 return Promise.resolve(1);
             }
@@ -249,6 +280,9 @@ export class Agent {
 
     }
 
+    /**
+     * It pickup the dropped parcels on the current tile, and it will update the carriedReward and carriedParcels values
+     */
     async pickUp() {
 
         const thisAgent = this;
@@ -257,23 +291,32 @@ export class Agent {
 
         pickUpResult.forEach(function(result){
             thisAgent.#carriedReward += result.reward;
-            thisAgent.#carriedPackages += 1;
+            thisAgent.#carriedParcels += 1;
         })
 
         return pickUpResult;
     }
 
+    /**
+     * It putdown the parcels on the current tile, and it will reset the carriedReward and carriedParcels values
+     */
     async putDown() {
 
         const client = this.#client;
         const putDownResult = await client.putdown();
 
         this.#carriedReward = 0;
-        this.#carriedPackages = 0;
+        this.#carriedParcels = 0;
 
         return putDownResult;
     }
 
+    /**
+     * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
+     * - the parcel value (higher is better)
+     * - the parcel distance to the agent (lower is better)
+     * - the parcel distance to the nearest delivery tile (lower is better)
+     */
     getBestParcel() {
 
         let agentX = this.#xPos;
@@ -291,7 +334,7 @@ export class Agent {
 
             let parcelReward = parcel.reward;
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
-            let [coords, parcelNearestDeliveryDistance] = map.getNearestDelivery(parcel.x, parcel.y, perceivedAgents);
+            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
 
             let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
 
@@ -352,7 +395,7 @@ export class Agent {
 
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
-         * NOTE: this event is emitted also when a package carried by another agents enters in the visible area? 
+         * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
          */
         this.#client.onParcelsSensing( async ( perceivedParcels ) => {
 
