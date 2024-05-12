@@ -30,6 +30,11 @@ export class Agent {
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
     #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
     #strategyChosenVerbose = process.env.STRATEGY_CHOSEN_VERBOSE === "true"
+    #errorMessagesVerbose = process.env.ERROR_MESSAGES_VERBOSE === "true"
+
+    // Other flags
+    #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
+    #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
     constructor(serverUrl, agentToken) {
 
@@ -83,6 +88,7 @@ export class Agent {
 
         }
         catch(error) {
+            if (this.#errorMessagesVerbose) console.log(error)
             await this.#client.timer(1000);
             await this.planRandomLoop();
         }
@@ -107,8 +113,8 @@ export class Agent {
             console.log("END planSearchInCenter (no map)");
             return Promise.resolve(1);
         }
-
-        const centeredTile = map.getCenteredTile();
+        
+        const centeredTile = map.getCenteredTile(this.#moveToCenteredDeliveryCell);
         const destination = [centeredTile.x,centeredTile.y];
 
         while(true){
@@ -213,7 +219,7 @@ export class Agent {
 
         const bestParcel = this.#perceivedParcels.get(bestParcelId);
 
-        if (await this.goTo(bestParcel.x,bestParcel.y) === 0) return Promise.resolve(0);
+        if (await this.goTo([bestParcel.x,bestParcel.y], bestParcelId, false) === 0) return Promise.resolve(0);
         await this.pickUp();
 
         console.log("END planPickUp (parcel's cell reached)");
@@ -234,7 +240,7 @@ export class Agent {
 
         let [distance, bestDelivery] = map.getNearestDelivery([agentX, agentY], perceivedAgents);
 
-        if (await this.goTo(bestDelivery.x, bestDelivery.y) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
+        if (await this.goTo([bestDelivery.x, bestDelivery.y], null, true) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
         await this.putDown();
 
         console.log("END planDelivery");
@@ -245,7 +251,7 @@ export class Agent {
     /**
      * It will move the agent to the tile [x,y] by also considering the map structure and the presence of other agents
      */
-    async goTo(x, y) {
+    async goTo([x, y], parcelToPickup = null, imDelivering = false) {
 
         const client = this.#client;
         const destination = [x,y];
@@ -262,6 +268,20 @@ export class Agent {
                 //console.log("next direction "+directions[0]); 
             }
     
+            if (parcelToPickup !== null){ // so, I'm coming from a pickup strategy
+                const bestParcel = this.#perceivedParcels.get(parcelToPickup);
+
+                if (!bestParcel || bestParcel.carriedBy !== null){
+                    console.log("ERROR, the parcel in "+destination+" is expired or already taken by another agent ");
+                    return Promise.resolve(0);    
+                }
+            }
+
+            if (imDelivering && this.#carriedParcels === 0){ // so, I'm coming from a delivery strategy and the packages I'm carrying are expired, I can stop the strategy
+                console.log("ERROR, the parcels to bring in delivery "+destination+" are expired");
+                return Promise.resolve(0);    
+            } 
+
             if (distance === 0) {
                 if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
                     await client.timer(500); // Waiting allow the agent to pickup the parcel
@@ -323,7 +343,7 @@ export class Agent {
         let agentY = this.#yPos;
         let map = this.#map;
         let perceivedAgents = this.#perceivedAgents;
-
+        let areParcelExpiring = this.#areParcelExpiring
         let bestScore = 0;
         let bestParcel = null;
         let bestDelivery = null;
@@ -336,8 +356,13 @@ export class Agent {
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
             let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
 
-            let parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
-
+            let parcelScore = 0;
+            if (areParcelExpiring){
+                parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
+            }else{
+                parcelScore = parcelReward
+            }
+            
             if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
                 bestScore = parcelScore;
                 bestParcel = parcelId;

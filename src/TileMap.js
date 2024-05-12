@@ -165,8 +165,9 @@ export class TileMap {
 
     /**
      * Returns a tile that is at the center or near it.
+     * The parameter returnDeliveryCell if true makes the function to return the most centered delivery cell, useful in certain maps with delivery tiles only on the edges (e.g. first challenge)
      */
-    getCenteredTile() {
+    getCenteredTile(returnDeliveryCell = false) {
 
         let width = this.#width;
         let height = this.#height;
@@ -209,8 +210,13 @@ export class TileMap {
                 
                 if (this.#isValidBFS(visited, adjx, adjy)) {
 
-                    if (tiles[adjx][adjy] === "parcelSpawner" || tiles[adjx][adjy] === "delivery")
-                        return {x:adjx,y:adjy};
+                    if (returnDeliveryCell){
+                        if (tiles[adjx][adjy] === "delivery")
+                            return {x:adjx,y:adjy};    
+                    }else{
+                        if (tiles[adjx][adjy] === "parcelSpawner" || tiles[adjx][adjy] === "delivery")
+                            return {x:adjx,y:adjy};    
+                    }
 
                     q.push([adjx, adjy ]);
                     visited[adjx][adjy] = true;
