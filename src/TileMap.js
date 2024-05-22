@@ -113,6 +113,9 @@ export class TileMap {
         return [-1,[],[]]; // No path found
     }
     
+    /**
+     * By iterating on the single agents, it creates a height x length map with true where an agent is perceived
+     */
     createAgentsMap(agentsPerceived) {
         let agentsMap = [];
 
@@ -137,7 +140,10 @@ export class TileMap {
         return this.#deliveryTiles;
     }
 
-    getNearestDelivery(x, y, agentsPerceived) {
+    /**
+     * Returns the nearest delivery tile starting from the given tile
+     */
+    getNearestDelivery([x,y], agentsPerceived) {
 
         let minDistance = Infinity;
         let coords = null;
@@ -153,8 +159,83 @@ export class TileMap {
 
         }
 
-        return [coords, minDistance];
+        return [minDistance, coords];
 
+    }
+
+    /**
+     * Returns a tile that is at the center or near it.
+     * The parameter returnDeliveryCell if true makes the function to return the most centered delivery cell, useful in certain maps with delivery tiles only on the edges (e.g. first challenge)
+     */
+    getCenteredTile(returnDeliveryCell = false) {
+
+        let width = this.#width;
+        let height = this.#height;
+        let tiles = this.#tiles;
+
+        let xCenter = Math.ceil(width/2) - 1;
+        let yCenter = Math.ceil(height/2) - 1;
+
+        if (tiles[xCenter][yCenter] === "parcelSpawner" || tiles[xCenter][yCenter] === "delivery")
+            return {x:xCenter,y:yCenter};
+
+        let visited = [];
+        for (let x = 0; x < width; x++ ){
+            visited[x] = [];
+            for (let y = 0; y < height; y++){
+                visited[x][y] = false;
+            }
+        }
+
+        let dRow = [-1, 0, 1, 0 ];
+        let dCol = [0, 1, 0, -1 ];
+
+        let q = [];
+ 
+        q.push([xCenter, yCenter]);
+        visited[xCenter][yCenter] = true;
+
+        while (q.length!=0) {
+            
+            let tile = q[0];
+            let x = tile[0];
+            let y = tile[1];
+
+            q.shift();
+            
+            for (let i = 0; i < 4; i++) {
+                
+                let adjx = x + dRow[i];
+                let adjy = y + dCol[i];
+                
+                if (this.#isValidBFS(visited, adjx, adjy)) {
+
+                    if (returnDeliveryCell){
+                        if (tiles[adjx][adjy] === "delivery")
+                            return {x:adjx,y:adjy};    
+                    }else{
+                        if (tiles[adjx][adjy] === "parcelSpawner" || tiles[adjx][adjy] === "delivery")
+                            return {x:adjx,y:adjy};    
+                    }
+
+                    q.push([adjx, adjy ]);
+                    visited[adjx][adjy] = true;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    #isValidBFS(vis, row, col){
+
+        if (row < 0 || col < 0 || row >= this.#width || col >= this.#height)
+            return false;
+     
+        if (vis[row][col])
+            return false;
+     
+        return true;
     }
 
     printDebug() {
