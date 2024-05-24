@@ -6,4 +6,5 @@ import { default as config } from "./config.js";
 import { Agent } from "./src/Agent.js";
 
 const agent = new Agent(config.host, config.token);
-agent.start();
+agent.intentionLoop();
+agent.queue( 'lamp_action', {x:1, y:1} ) 
