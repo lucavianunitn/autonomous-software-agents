@@ -6,6 +6,7 @@ export class TileMap {
     #height;
 
     #tiles = [];
+
     #deliveryTiles = [];
 
     constructor(width, height, tiles) {
@@ -32,6 +33,14 @@ export class TileMap {
             if (delivery)
                 this.#deliveryTiles.push({x:x,y:y});
         });
+
+    }
+
+    getRandomDelivery() {
+
+        let deliveryTiles = this.#deliveryTiles;
+
+        return deliveryTiles[Math.floor(Math.random()*deliveryTiles.length)];
 
     }
 
@@ -282,13 +291,13 @@ export class TileMap {
         for (let x = 0; x < this.#width; x++) { // changed the for range
             for (let y = 0; y < this.#height; y++) {
                 if( this.#tiles[x][y] !== "empty" ){
-                    if (x-1 > 0 && this.#tiles[x-1][y] !== "empty"){
+                    if (x-1 >= 0 && this.#tiles[x-1][y] !== "empty"){
                         tileBeliefset.declare('left tile_'+x+'_'+y+' tile_'+(x-1)+'_'+y);
                     }
                     if (x+1 < this.#width && this.#tiles[x+1][y] !== "empty"){
                         tileBeliefset.declare('right tile_'+x+'_'+y+' tile_'+(x+1)+'_'+y);
                     }
-                    if (y-1 > 0 && this.#tiles[x][y-1] !== "empty"){
+                    if (y-1 >= 0 && this.#tiles[x][y-1] !== "empty"){
                         tileBeliefset.declare('down tile_'+x+'_'+y+' tile_'+x+'_'+(y-1));
                     }
                     if (y+1 < this.#height && this.#tiles[x][y+1] !== "empty"){

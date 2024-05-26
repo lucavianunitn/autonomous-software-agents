@@ -39,13 +39,13 @@
         :effect (and (not (at ?me ?from)) (at ?me ?to))
     )
 
-    (:action pickup
+    (:action pick_up
         :parameters (?me ?tile ?parcel)
         :precondition (and (me ?me) (tile ?tile) (at ?me ?tile) (parcel ?parcel) (at ?parcel ?tile) (not(carry ?me ?parcel)))
         :effect (and (carry ?me ?parcel))
     )
 
-    (:action putdown
+    (:action put_down
         :parameters (?me ?tile ?parcel)
         :precondition (and (me ?me) (tile ?tile) (at ?me ?tile) (parcel ?parcel) (carry ?me ?parcel))
         :effect (and (not (carry ?me ?parcel)) (at ?parcel ?tile))

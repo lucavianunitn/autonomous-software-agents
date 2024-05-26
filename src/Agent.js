@@ -1,22 +1,13 @@
 import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
-import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Beliefset } from "@unitn-asa/pddl-client";
 import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
-import fs from 'fs';
+import { Intention } from "./Intention.js";
+import { default as config } from "./../config.js";
+import { isMap } from "util/types";
 
-function readFile ( path ) {
-    return new Promise( (res, rej) => {
-        fs.readFile( path, 'utf8', (err, data) => {
-            if (err) rej(err)
-            else res(data)
-        })
-    })
-}
+export const client = new DeliverooApi(config.host, config.token);
 
 export class Agent {
-
-    #serverUrl;
-    #client;
 
     // Agent info
     #agentToken
@@ -51,27 +42,59 @@ export class Agent {
 
     constructor(serverUrl, agentToken) {
 
-        this.#client = new DeliverooApi(serverUrl, agentToken);
-
         this.#agentToken = agentToken;
-        this.#serverUrl = serverUrl;
 
         this.setupClient();
     }
 
     async intentionLoop ( ) {
         while ( true ) {
-            const intention = this.#intention_queue.shift();
-            if ( intention )
-                await intention.achieve();
+            // Consumes intention_queue if not empty
+            if ( this.#intention_queue.length > 0 ) {
+                console.log( 'intentionRevision.loop', this.#intention_queue.map(i=>i.predicate) );
+            
+                // Current intention
+                const intention = this.#intention_queue[0];
+
+                // Start achieving intention
+                let result = await intention.achieve()
+                // Catch eventual error and continue
+                .catch( error => {
+                    console.log(error);
+                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                } );
+
+                console.log("ASD");
+                console.log(result);
+
+                // Remove from the queue
+                this.#intention_queue.shift();
+            }
+            else {
+
+                let isMapDefined = this.#map !== undefined
+
+                console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+                if (isMapDefined)
+                    this.queue("random", this.#xPos, this.#yPos, this.#map);
+
+                //this.queue( 'go_pick_up', 1, 1, this.#map ) // TODO
+
+            }
+            // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
         }
     }
 
-    async queue ( desire, ...args ) {
-        const last = this.#intention_queue.at( this.#intention_queue.length - 1 );
-        const current = new Intention( desire, ...args )
-        this.#intention_queue.push( current );
+    async queue ( ...predicate ) {
+        // Check if already queued
+        if ( this.#intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
+            return; // intention is already queued
+
+        console.log( 'IntentionRevisionReplace.push', predicate );
+        const intention = new Intention( this, predicate );
+        this.#intention_queue.push( intention );
     }
 
     async stop ( ) {
@@ -119,7 +142,6 @@ export class Agent {
     async pickUp() {
 
         const thisAgent = this;
-        const client = this.#client;
         const pickUpResult = await client.pickup();
 
         pickUpResult.forEach(function(result){
@@ -134,8 +156,6 @@ export class Agent {
      * It putdown the parcels on the current tile, and it will reset the carriedReward and carriedParcels values
      */
     async putDown() {
-
-        const client = this.#client;
 
         const putDownResult = await client.putdown();
 
@@ -202,18 +222,15 @@ export class Agent {
      */
     setupClient() {
 
-        this.#client.onConnect( () => console.log( "socket",  this.#client.socket.id ) );
-
-        this.#client.onDisconnect( () => console.log( "disconnected",  this.#client.socket.id ) );
+        client.onConnect( () => console.log( "socket", client.socket.id ) );
+        client.onDisconnect( () => console.log( "disconnected", client.socket.id ) );
 
         /**
          * The event handled by this listener is emitted on agent connection.
          */
-        this.#client.onMap( ( width, height, tilesInfo ) => {
+        client.onMap( ( width, height, tilesInfo ) => {
 
             this.#map = new TileMap(width, height, tilesInfo);
-
-            this.queue( 'go_pick_up', 1, 1, this.#map ) // TODO
 
             if(this.#onMapVerbose) this.#map.printDebug();
 
@@ -224,7 +241,7 @@ export class Agent {
          * For each movement there are two event: one partial and one final.
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
-        this.#client.onYou( ( {id, name, x, y, score} ) => {
+        client.onYou( ( {id, name, x, y, score} ) => {
             this.#id = id;
             this.#name = name;
             this.#xPos = x;
@@ -238,7 +255,7 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
          */
-        this.#client.onParcelsSensing( async ( perceivedParcels ) => {
+        client.onParcelsSensing( async ( perceivedParcels ) => {
 
             this.#perceivedParcels.clear();
 
@@ -253,7 +270,7 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
          */
-        this.#client.onAgentsSensing( async ( perceivedAgents ) => {
+        client.onAgentsSensing( async ( perceivedAgents ) => {
 
             this.#perceivedAgents.clear();
 
@@ -293,128 +310,3 @@ export class Agent {
     }
 
 }
-
-/**
- * Intention
- */
-export class Intention extends Promise {
-
-    #current_plan;
-    stop () {
-        console.log( 'stop intention and current plan');
-        this.#current_plan.stop();
-    }
-
-    #desire;
-    #args;
-
-    #resolve;
-    #reject;
-
-    constructor ( desire, ...args ) {
-        var resolve, reject;
-        super( async (res, rej) => {
-            resolve = res; reject = rej;
-        } )
-        this.#resolve = resolve
-        this.#reject = reject
-        this.#desire = desire;
-        this.#args = args;
-    }
-
-    #started = false;
-    async achieve () {
-        if ( this.#started)
-            return this;
-        else
-            this.#started = true;
-
-        for (const plan of plans) {
-            console.log("DESIRE: "+this.#desire);
-            
-            if ( plan.isApplicableTo( this.#desire ) ) {
-                this.#current_plan = plan;
-                console.log('achieving desire', this.#desire, ...this.#args, 'with plan', plan);
-                try {
-                    const plan_res = await plan.execute( ...this.#args );
-                    this.#resolve( plan_res );
-                    console.log( 'plan', plan, 'succesfully achieved intention', this.#desire, ...this.#args, 'with result', plan_res );
-                    return plan_res
-                } catch (error) {
-                    console.log( 'plan', plan, 'failed while trying to achieve intention', this.#desire, ...this.#args, 'with error', error );
-                }
-            }
-        }
-
-        this.#reject();
-        console.log('no plan satisfied the desire ', this.#desire, ...this.#args);
-        throw 'no plan satisfied the desire ' + this.#desire;
-    }
-
-}
-
-/**
- * Plan library
- */
-const plans = [];
-
-export class Plan {
-
-    stop () {
-        console.log( 'stop plan and all sub intentions');
-        for ( const i of this.#sub_intentions ) {
-            i.stop();
-        }
-    }
-
-    #sub_intentions = [];
-
-    async subIntention ( desire, ...args ) {
-        const sub_intention = new Intention( desire, ...args );
-        this.#sub_intentions.push(sub_intention);
-        return await sub_intention.achieve();
-    }
-
-}
-
-export class GoPickUp extends Plan {
-
-    isApplicableTo ( desire ) {
-        return desire == 'go_pick_up';
-    }
-
-    async execute (agentX, agentY, map ) {
-        const beliefset = map.returnAsBeliefset()
-        // console.log(map.returnAsBeliefset().toPddlString())
-
-        beliefset.declare('me me');
-        beliefset.declare('at me tile_'+agentX+'_'+agentY);
-
-
-        var pddlProblem = new PddlProblem(
-            'deliveroo',
-            beliefset.objects.join(' '),
-            beliefset.toPddlString(),
-            'and (at me tile_17_12)'
-        )
-
-        //build plan
-        let problem = pddlProblem.toPddlString();
-        console.log(problem)
-        let domain = await readFile('./src/domain-agent.pddl' );
-        //console.log( domain );
-        var plan = await onlineSolver( domain, problem );
-
-        console.log( plan );
-        // const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => console.log('right')}
-        //                                     ,{ name: 'move_left', executor: () => console.log('left')}
-        //                                     ,{ name: 'move_up', executor: () =>  console.log('up')}
-        //                                     ,{ name: 'move_down', executor: () =>  console.log('down')}
-        //                                     );
-
-        // pddlExecutor.exec( plan )
-    }
-
-}
-
-plans.push( new GoPickUp() )
