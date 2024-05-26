@@ -5,43 +5,56 @@ import { planLibrary } from "./Plan.js";
  */
 export class Intention {
 
+    #desire;
+
     // Plan currently used for achieving the intention 
     #current_plan;
     
     // This is used to stop the intention
     #stopped = false;
-    get stopped () {
-        return this.#stopped;
-    }
-    stop () {
-        // this.log( 'stop intention', ...this.#predicate );
-        this.#stopped = true;
-        if ( this.#current_plan)
-            this.#current_plan.stop();
-    }
+
+    #started = false;
 
     /**
      * #parent refers to caller
      */
-    get parent () {
-        return this.#parent;
-    }
     #parent;
 
     /**
      * predicate is in the form ['go_to', x, y]
      */
+    #predicate;
+
+    constructor ( parent, desire, predicate ) {
+        this.#parent = parent;
+        this.#desire = desire;
+        this.#predicate = predicate;
+    }
+
+    get desire() {
+        return this.#desire;
+    }
+
+    get stopped () {
+        return this.#stopped;
+    }
+
+    get parent () {
+        return this.#parent;
+    }
+
     get predicate () {
         return this.#predicate;
     }
-    #predicate;
 
-    constructor ( parent, predicate ) {
-        this.#parent = parent;
-        this.#predicate = predicate;
-        console.log(predicate);
+    stop() {
+        // this.log( 'stop intention', ...this.#predicate );
+        this.#stopped = true;
+        if (this.#current_plan)
+            this.#current_plan.stop();
     }
 
+    // TODO: fix this
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
@@ -49,13 +62,12 @@ export class Intention {
             console.log( ...args )
     }
 
-    #started = false;
     /**
      * Using the plan library to achieve an intention
      */
     async achieve () {
         // Cannot start twice
-        if ( this.#started)
+        if (this.#started)
             return this;
         else
             this.#started = true;
@@ -67,7 +79,7 @@ export class Intention {
             if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
 
             // if plan is 'statically' applicable
-            if ( planClass.isApplicableTo( ...this.predicate ) ) {
+            if ( planClass.isApplicableTo( this.desire ) ) {
                 // plan is instantiated
                 this.#current_plan = new planClass(this.parent);
                 this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
@@ -78,6 +90,7 @@ export class Intention {
                     return plan_res
                 // or errors are caught so to continue with next plan
                 } catch (error) {
+                    console.log(error);
                     this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', ...error );
                 }
             }

@@ -14,7 +14,7 @@ export async function actionStealAndMove(direction) {
 
 }
 
-async function actionPickUp() {
+export async function actionPickUp() {
 
     const pickUpResult = await client.pickup();
 
@@ -33,7 +33,7 @@ async function actionPickUp() {
 
 }
 
-async function actionPutDown() {
+export async function actionPutDown() {
 
     const putDownResult = await client.putdown();
 

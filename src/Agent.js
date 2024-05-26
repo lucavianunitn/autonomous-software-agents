@@ -3,7 +3,6 @@ import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
 import { Intention } from "./Intention.js";
 import { default as config } from "./../config.js";
-import { isMap } from "util/types";
 
 export const client = new DeliverooApi(config.host, config.token);
 
@@ -40,7 +39,7 @@ export class Agent {
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(serverUrl, agentToken) {
+    constructor(agentToken) {
 
         this.#agentToken = agentToken;
 
@@ -57,15 +56,12 @@ export class Agent {
                 const intention = this.#intention_queue[0];
 
                 // Start achieving intention
-                let result = await intention.achieve()
+                await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
                     console.log(error);
                     // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
-
-                console.log("ASD");
-                console.log(result);
 
                 // Remove from the queue
                 this.#intention_queue.shift();
@@ -74,12 +70,23 @@ export class Agent {
 
                 let isMapDefined = this.#map !== undefined
 
-                console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+                if (isMapDefined) {
 
-                if (isMapDefined)
-                    this.queue("random", this.#xPos, this.#yPos, this.#map);
+                    let bestParcelId = this.getBestParcel()[1];
+                    let parcel = this.#perceivedParcels.get(bestParcelId);
 
-                //this.queue( 'go_pick_up', 1, 1, this.#map ) // TODO
+                    console.log(parcel);
+
+                    if (parcel !== undefined) {
+                        this.queue("random", this.#xPos, this.#yPos, this.#map);
+                        // Bisogna fixare la gestione delle parcels in pddl
+                        //this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map);
+                    }
+                    else 
+                        this.queue("random", this.#xPos, this.#yPos, this.#map);
+                }
+
+                // TODO: random move if map is note defined?
 
             }
             // Postpone next iteration at setImmediate
@@ -87,14 +94,14 @@ export class Agent {
         }
     }
 
-    async queue ( ...predicate ) {
+    async queue ( desire, ...predicate ) {
         // Check if already queued
         if ( this.#intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
             return; // intention is already queued
 
-        console.log( 'IntentionRevisionReplace.push', predicate );
-        const intention = new Intention( this, predicate );
-        this.#intention_queue.push( intention );
+        console.log('IntentionRevisionReplace.push', predicate);
+        const intention = new Intention(this, desire, predicate);
+        this.#intention_queue.push(intention);
     }
 
     async stop ( ) {
@@ -105,67 +112,7 @@ export class Agent {
     }
 
     /**
-     * Plan to search for parcels while going to the center of the map.
-     * Plan doesn't start if TileMap is not defined.
-     * Plan stops when found a parcel or when the centered tile is reached.
-     * @returns 
-     */
-    async planSearchInCenter() {
-
-        console.log("START planSearchInCenter");
-
-    }
-
-    /**
-     * It finds the coordinates of the most rewardable parcel, 
-     * and it tries to do its pickup
-     */
-    async planPickUp() {
-
-        console.log("START planPickUp");
-
-    }
-
-    /**
-     * It finds the coordinates of the nearest delivery tile, 
-     * and it tries to do its parcels putdown
-     */
-    async planDelivery() {
-
-        console.log("START planDelivery");
-    
-    }
-
-    /**
-     * It pickup the dropped parcels on the current tile, and it will update the carriedReward and carriedParcels values
-     */
-    async pickUp() {
-
-        const thisAgent = this;
-        const pickUpResult = await client.pickup();
-
-        pickUpResult.forEach(function(result){
-            thisAgent.#carriedReward += result.reward;
-            thisAgent.#carriedParcels += 1;
-        })
-
-        return pickUpResult;
-    }
-
-    /**
-     * It putdown the parcels on the current tile, and it will reset the carriedReward and carriedParcels values
-     */
-    async putDown() {
-
-        const putDownResult = await client.putdown();
-
-        this.#carriedReward = 0;
-        this.#carriedParcels = 0;
-
-        return putDownResult;
-    }
-
-    /**
+     * TODO: improve this method
      * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
      * - the parcel value (higher is better)
      * - the parcel distance to the agent (lower is better)
