@@ -57,8 +57,6 @@ export class Agent {
         this.#serverUrl = serverUrl;
 
         this.setupClient();
-
-        this.#eventEmitter.on("restart", this.start.bind(this));
     }
 
     async intentionLoop ( ) {
@@ -82,53 +80,6 @@ export class Agent {
             intention.stop();
         }
     }
-    /**
-     * It chooses the strategy to follow based on the enviroment status the agent can perceive
-     */
-    async start() {
-        try {
-            let [bestParcelProfit, bestParcelId, bestDeliveryTile] = this.getBestParcel();
-
-            let isMapDefined = this.#map !== undefined
-            let isAnyParcelPerceived = this.#perceivedParcels.size !== 0
-            let isThereProfitableParcel = bestParcelProfit !== 0
-            let areCarriedParcelsDeliveryThreshold = this.#carriedParcels !== 0 && this.#carriedParcels >= 3
-
-            // if map is defined and:
-            // I have less than 4 parcels but at least one OR
-            // I have at least a parcel and I dindn't see anything other valuable
-            if (isMapDefined && (areCarriedParcelsDeliveryThreshold || (this.#carriedParcels !== 0 && (!isAnyParcelPerceived || !isThereProfitableParcel)))) {
-                console.log("isAnyParcelPerceived "+isAnyParcelPerceived)
-                if(this.#strategyChosenVerbose){
-                    console.log("Parcel DELIVERY strategy chosen");
-                }
-
-                await this.planDelivery();
-            } else if (!isMapDefined || !isAnyParcelPerceived || !isThereProfitableParcel) {
-                if(this.#strategyChosenVerbose){
-                    console.log("CENTER/RANDOM strategy chosen");
-                }
-
-                await this.planSearchInCenter();
-                await this.planRandomLoop();
-            }
-            else {
-                if(this.#strategyChosenVerbose){
-                    console.log("Parcel PICKUP strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+bestParcelProfit);
-                }
-
-                await this.planPickUp();
-            }
-
-        }
-        catch(error) {
-            if (this.#errorMessagesVerbose) console.log(error)
-            await this.#client.timer(1000);
-            await this.planRandomLoop();
-        }
-
-        this.#eventEmitter.emit("restart");
-    }
 
     /**
      * Plan to search for parcels while going to the center of the map.
@@ -140,104 +91,6 @@ export class Agent {
 
         console.log("START planSearchInCenter");
 
-        const client = this.#client;
-        const map = this.#map;
-
-        if (map === undefined) {
-            console.log("END planSearchInCenter (no map)");
-            return Promise.resolve(1);
-        }
-        
-        const centeredTile = map.getCenteredTile(this.#moveToCenteredDeliveryCell);
-        const destination = [centeredTile.x,centeredTile.y];
-
-        while(true){
-
-            // Found a parcel
-            if (this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
-                console.log("END planSearchInCenter (found parcel)");
-                return Promise.resolve(1);
-            }
-
-            let [distance, path, directions] = map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-    
-            // Reached center
-            if (distance === 0) {
-                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the parcel
-                }
-                console.log("END planSearchInCenter (reached center)");
-                return Promise.resolve(1);
-            }
-            else if(distance < 0){
-                console.log("ERROR, it's not possible to reach "+destination);
-                return Promise.resolve(0);
-            }else{
-                await this.putDown();
-                await this.pickUp();
-                await client.move(directions[0]);          
-            }    
-        }
-
-    }
-
-    /**
-     * starts a loop of random movements of the agents. Every movement includes the actions of putting down and picking up
-     * a parcel.
-     */
-    async planRandomLoop() {
-
-        console.log("START planRandomLoop");
-
-        const client = this.#client;
-
-        let previous = 'right';
-    
-        while (true) {
-            console.log("loop");
-
-            // TileMap is defined and found a parcel
-            if (this.#map !== undefined && this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
-                console.log("END planRandomLoop (TileMap defined and parcel found)");
-                return Promise.resolve(1);
-            }
-            console.log("before await");
-            await this.putDown();
-            console.log("after await");
-
-            await this.pickUp();
-    
-            let tried = [];
-    
-            while (tried.length < 4) {
-                
-                let current = {up: 'down', right: 'left', down: 'up', left: 'right'}[previous] // backward
-    
-                if (tried.length < 3) // try haed or turn (before going backward)
-                    current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random()*3)];
-                
-                if (! tried.includes(current)) {
-                    console.log("before await");
-
-                    if (await client.move(current)) {
-                        console.log("inside await");
-
-                        //console.log( 'moved %s', current );
-                        previous = current;
-                        break; // moved, continue
-                    }
-                    
-                    tried.push(current);
-                    
-                }
-                
-            }
-    
-            if (tried.length == 4) {
-                console.log('planRandomLoop: Stucked');
-                await client.timer(1000); // stucked, wait 1 sec and retry
-            }
-        }
     }
 
     /**
@@ -248,22 +101,6 @@ export class Agent {
 
         console.log("START planPickUp");
 
-        const client = this.#client;
-        const [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
-
-        if (bestScore === 0){ // No parcel found
-            await client.timer(500);
-            console.log("END planPickUp (no best parcel)");
-            return Promise.resolve(1);
-        }
-
-        const bestParcel = this.#perceivedParcels.get(bestParcelId);
-
-        if (await this.goTo([bestParcel.x,bestParcel.y], bestParcelId, false) === 0) return Promise.resolve(0);
-        await this.pickUp();
-
-        console.log("END planPickUp (parcel's cell reached)");
-        return Promise.resolve(1);
     }
 
     /**
@@ -273,84 +110,17 @@ export class Agent {
     async planDelivery() {
 
         console.log("START planDelivery");
-        let agentX = this.#xPos;
-        let agentY = this.#yPos;
-        let map = this.#map;
-        let perceivedAgents = this.#perceivedAgents;
-
-        let [distance, bestDelivery] = map.getNearestDelivery([agentX, agentY], perceivedAgents);
-
-        if (await this.goTo([bestDelivery.x, bestDelivery.y], null, true) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
-        await this.putDown();
-
-        console.log("END planDelivery");
-        return Promise.resolve(1);
-    }
-
-
-    /**
-     * It will move the agent to the tile [x,y] by also considering the map structure and the presence of other agents
-     */
-    async goTo([x, y], parcelToPickup = null, imDelivering = false) {
-
-        const client = this.#client;
-        const destination = [x,y];
-
-        while(true){
-
-            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-
-            if(this.#pathBetweenTilesVerbose){
-                console.log("Distance "+distance);
-                console.log("Destination "+destination)
-                //console.log("path "+path);
-                //console.log("directions "+directions);   
-                //console.log("next direction "+directions[0]); 
-            }
     
-            if (parcelToPickup !== null){ // so, I'm coming from a pickup strategy
-                const bestParcel = this.#perceivedParcels.get(parcelToPickup);
-
-                if (!bestParcel || bestParcel.carriedBy !== null){
-                    console.log("ERROR, the parcel in "+destination+" is expired or already taken by another agent ");
-                    return Promise.resolve(0);    
-                }
-            }
-
-            if (imDelivering && this.#carriedParcels === 0){ // so, I'm coming from a delivery strategy and the packages I'm carrying are expired, I can stop the strategy
-                console.log("ERROR, the parcels to bring in delivery "+destination+" are expired");
-                return Promise.resolve(0);    
-            } 
-
-            if (distance === 0) {
-                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the parcel
-                }
-                return Promise.resolve(1);
-            }
-            else if(distance < 0){
-                console.log("ERROR, it's not possible to reach "+destination);
-                return Promise.resolve(0);
-            }else{
-                await this.putDown();
-                await this.pickUp();
-                await client.move(directions[0]);          
-            }    
-        }
-
     }
 
     /**
      * It pickup the dropped parcels on the current tile, and it will update the carriedReward and carriedParcels values
      */
     async pickUp() {
-        console.log("CIAO0");
+
         const thisAgent = this;
-        console.log("CIAO1");
         const client = this.#client;
-        console.log("CIAO2");
         const pickUpResult = await client.pickup();
-        console.log("POLLO");
 
         pickUpResult.forEach(function(result){
             thisAgent.#carriedReward += result.reward;
@@ -364,12 +134,10 @@ export class Agent {
      * It putdown the parcels on the current tile, and it will reset the carriedReward and carriedParcels values
      */
     async putDown() {
-        console.log("CIAO0");
+
         const client = this.#client;
-        console.log("CIAO1");
 
         const putDownResult = await client.putdown();
-        console.log("CIAO2");
 
         this.#carriedReward = 0;
         this.#carriedParcels = 0;
@@ -444,6 +212,8 @@ export class Agent {
         this.#client.onMap( ( width, height, tilesInfo ) => {
 
             this.#map = new TileMap(width, height, tilesInfo);
+
+            this.queue( 'go_pick_up', 1, 1, this.#map ) // TODO
 
             if(this.#onMapVerbose) this.#map.printDebug();
 
@@ -613,84 +383,38 @@ export class GoPickUp extends Plan {
         return desire == 'go_pick_up';
     }
 
-    async execute ( {x, y} ) {
-        await this.subIntention( 'go_to', {x, y} );
-        await client.pickup()
-    }
+    async execute (agentX, agentY, map ) {
+        const beliefset = map.returnAsBeliefset()
+        // console.log(map.returnAsBeliefset().toPddlString())
 
-}
+        beliefset.declare('me me');
+        beliefset.declare('at me tile_'+agentX+'_'+agentY);
 
-export class BlindMove extends Plan {
 
-    isApplicableTo ( desire ) {
-        return desire == 'go_to';
-    }
+        var pddlProblem = new PddlProblem(
+            'deliveroo',
+            beliefset.objects.join(' '),
+            beliefset.toPddlString(),
+            'and (at me tile_17_12)'
+        )
 
-    async execute ( {x, y} ) { 
-        while ( me.x != x || me.y != y ) {
+        //build plan
+        let problem = pddlProblem.toPddlString();
+        console.log(problem)
+        let domain = await readFile('./src/domain-agent.pddl' );
+        //console.log( domain );
+        var plan = await onlineSolver( domain, problem );
 
-            let status_x = undefined;
-            let status_y = undefined;
-            
-            console.log('me', me, 'xy', x, y);
-
-            if ( x > me.x )
-                status_x = await client.move('right')
-                // status_x = await this.subIntention( 'go_to', {x: me.x+1, y: me.y} );
-            else if ( x < me.x )
-                status_x = await client.move('left')
-                // status_x = await this.subIntention( 'go_to', {x: me.x-1, y: me.y} );
-
-            if (status_x) {
-                me.x = status_x.x;
-                me.y = status_x.y;
-            }
-
-            if ( y > me.y )
-                status_y = await client.move('up')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y+1} );
-            else if ( y < me.y )
-                status_y = await client.move('down')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y-1} );
-
-            if (status_y) {
-                me.x = status_y.x;
-                me.y = status_y.y;
-            }
-            
-            if ( ! status_x && ! status_y) {
-                console.log('stucked')
-                break;
-            } else if ( me.x == x && me.y == y ) {
-                console.log('target reached')
-            }
-            
-        }
-
-    }
-}
-
-export class LampAction extends Plan {
-
-    isApplicableTo ( desire ) {
-        return desire == 'lamp_action';
-    }
-
-    async execute ( {x, y} ) {
-        console.log("BELLA ZIO")
-        let problem = await readFile('./src/problem-lights.pddl' );
-        console.log( problem );
-        let domain = await readFile('./src/domain-lights.pddl' );
-
-        var plan = await onlineSolver(domain, problem);
         console.log( plan );
-        
-        const pddlExecutor = new PddlExecutor( { name: 'lightOn', executor: (l)=>console.log('exec lighton '+l) } );
-        pddlExecutor.exec( plan );
+        // const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => console.log('right')}
+        //                                     ,{ name: 'move_left', executor: () => console.log('left')}
+        //                                     ,{ name: 'move_up', executor: () =>  console.log('up')}
+        //                                     ,{ name: 'move_down', executor: () =>  console.log('down')}
+        //                                     );
+
+        // pddlExecutor.exec( plan )
     }
 
 }
 
 plans.push( new GoPickUp() )
-plans.push( new BlindMove() )
-plans.push( new LampAction() )

@@ -7,4 +7,3 @@ import { Agent } from "./src/Agent.js";
 
 const agent = new Agent(config.host, config.token);
 agent.intentionLoop();
-agent.queue( 'lamp_action', {x:1, y:1} ) 
