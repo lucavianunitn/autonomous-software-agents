@@ -18,19 +18,6 @@ export async function actionPickUp() {
 
     const pickUpResult = await client.pickup();
 
-    let resultReward = 0;
-    let carriedParcels = 0;
-    pickUpResult.forEach(function(result){
-        resultReward += result.reward;
-        carriedParcels += 1;
-
-    });
-
-    return {
-        resultReward : resultReward,
-        carriedParcels : carriedParcels
-    };
-
 }
 
 export async function actionPutDown() {

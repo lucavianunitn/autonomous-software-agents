@@ -10,9 +10,9 @@
         (right ?t1 ?t2)
         (at ?me ?tile)
         (delivery ?dt)
+        (to_deliver)
         (parcel ?p)
         (carry ?me ?p)
-        (agent ?a)
     )
     
     (:action move_up
@@ -42,12 +42,18 @@
     (:action pick_up
         :parameters (?me ?tile ?parcel)
         :precondition (and (me ?me) (tile ?tile) (at ?me ?tile) (parcel ?parcel) (at ?parcel ?tile) (not(carry ?me ?parcel)))
-        :effect (and (carry ?me ?parcel))
+        :effect (and (carry ?me ?parcel) (not(at ?parcel ?tile)))
     )
 
     (:action put_down
         :parameters (?me ?tile ?parcel)
         :precondition (and (me ?me) (tile ?tile) (at ?me ?tile) (parcel ?parcel) (carry ?me ?parcel))
         :effect (and (not (carry ?me ?parcel)) (at ?parcel ?tile))
+    )
+
+    (:action put_down_on_delivery
+        :parameters (?me ?tile ?parcel)
+        :precondition (and (me ?me) (tile ?tile) (delivery ?tile) (at ?me ?tile) (parcel ?parcel) (carry ?me ?parcel) (to_deliver))
+        :effect (and (not (carry ?me ?parcel)) (at ?parcel ?tile) (not(to_deliver)))
     )
 )

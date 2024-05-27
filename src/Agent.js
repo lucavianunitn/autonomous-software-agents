@@ -70,24 +70,23 @@ export class Agent {
 
                 let isMapDefined = this.#map !== undefined
 
-                if (isMapDefined) {
-
+                if (isMapDefined){
                     let bestParcelId = this.getBestParcel()[1];
                     let parcel = this.#perceivedParcels.get(bestParcelId);
-
-                    console.log(parcel);
-
-                    if (parcel !== undefined) {
-                        this.queue("random", this.#xPos, this.#yPos, this.#map);
-                        // Bisogna fixare la gestione delle parcels in pddl
-                        //this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map);
+    
+                    let carriedParcels = this.getCarriedParcel();
+    
+                    if (carriedParcels > 0){
+                        this.queue("go_delivery", this.#xPos, this.#yPos, this.#map);
                     }
-                    else 
+                    else if (parcel !== undefined) {
+                        this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map);
+                    }
+                    else {
                         this.queue("random", this.#xPos, this.#yPos, this.#map);
+                    }
+                    // TODO: random move if map is note defined?
                 }
-
-                // TODO: random move if map is note defined?
-
             }
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
@@ -154,6 +153,19 @@ export class Agent {
 
         return [bestScore, bestParcel, bestDelivery];
 
+    }
+
+    getCarriedParcel() {
+        const agentID = this.#id;
+        var carriedParcels = 0;
+
+        this.#perceivedParcels.forEach(function(parcel) {
+            if (parcel.carriedBy === agentID) {
+                carriedParcels++;
+            }
+        })
+
+        return carriedParcels;
     }
 
     /**

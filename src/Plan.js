@@ -97,16 +97,13 @@ export class ReachRandomDelivery extends Plan {
 
 }
 
-/**
- * TODO: incomplete
- */
 export class GoPickUp extends Plan {
 
     static isApplicableTo ( desire ) {
         return desire == 'go_pick_up';
     }
 
-    async execute (agentX, agentY, parcelX, parcelY, parcelId, map ) {
+    async execute (agentX, agentY, parcelX, parcelY, parcelId, map) {
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false ||
             Number.isInteger(parcelX) === false || Number.isInteger(agentY) === false)
@@ -115,19 +112,21 @@ export class GoPickUp extends Plan {
         const beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
 
-        beliefset.declare('me me');
-        beliefset.declare('at me tile_'+agentX+'_'+agentY);
+        beliefset.declare(`me me`);
+        beliefset.declare(`at me tile_${agentX}_${agentY}`);
+        beliefset.declare(`parcel ${parcelId}`);
+        beliefset.declare(`at ${parcelId} tile_${parcelX}_${parcelY}`);
 
         var pddlProblem = new PddlProblem(
             'deliveroo',
             beliefset.objects.join(' '),
             beliefset.toPddlString(),
-            `and (at me tile_${parcelX}_${parcelY}) (carry me ${parcelId})`
+            `and (carry me ${parcelId})`
         )
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        console.log(problem)
+        //console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -144,6 +143,53 @@ export class GoPickUp extends Plan {
 
 }
 
+export class GoDelivery extends Plan {
+
+    static isApplicableTo ( desire ) {
+        return desire == 'go_delivery';
+    }
+
+    async execute (agentX, agentY, map) {
+
+        if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
+            return Promise.resolve(1);
+
+        const beliefset = map.returnAsBeliefset()
+        // console.log(map.returnAsBeliefset().toPddlString())
+
+        beliefset.declare(`me me`);
+        beliefset.declare(`at me tile_${agentX}_${agentY}`);
+        beliefset.declare(`parcel p`);
+        beliefset.declare(`carry me p`);
+        beliefset.declare(`to_deliver`);
+
+        var pddlProblem = new PddlProblem(
+            'deliveroo',
+            beliefset.objects.join(' '),
+            beliefset.toPddlString(),
+            `and (not(to_deliver))`
+        )
+
+        //build plan
+        let problem = pddlProblem.toPddlString();
+        //console.log(problem)
+        let domain = await readFile('./src/domain-agent.pddl' );
+        //console.log( domain );
+        var plan = await onlineSolver( domain, problem );
+
+        //console.log( plan );
+        const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => actionStealAndMove('right').catch(err => {throw err})}
+                                             ,{ name: 'move_left', executor: () => actionStealAndMove('left').catch(err => {throw err})}
+                                             ,{ name: 'move_up', executor: () => actionStealAndMove('up').catch(err => {throw err})}
+                                             ,{ name: 'move_down', executor: () => actionStealAndMove('down').catch(err => {throw err})}
+                                             ,{ name: 'put_down_on_delivery', executor: () => actionPutDown().catch(err => {throw err})}
+                                             ,{ name: 'put_down', executor: () => actionPutDown().catch(err => {throw err})});
+
+        await pddlExecutor.exec( plan ).catch(err => {throw err});
+    }
+
+}
+
 function readFile ( path ) {
     return new Promise( (res, rej) => {
         fs.readFile( path, 'utf8', (err, data) => {
@@ -154,5 +200,6 @@ function readFile ( path ) {
 }
 
 export const planLibrary = [];
-planLibrary.push( GoPickUp );
 planLibrary.push( ReachRandomDelivery );
+planLibrary.push( GoPickUp );
+planLibrary.push( GoDelivery );
