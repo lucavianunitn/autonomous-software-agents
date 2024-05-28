@@ -84,15 +84,26 @@ export class ReachRandomDelivery extends Plan {
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
-
         //console.log( plan );
-        const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => actionStealAndMove('right').catch(err => {throw err})}
-                                             ,{ name: 'move_left', executor: () => actionStealAndMove('left').catch(err => {throw err})}
-                                             ,{ name: 'move_up', executor: () => actionStealAndMove('up').catch(err => {throw err})}
-                                             ,{ name: 'move_down', executor: () => actionStealAndMove('down').catch(err => {throw err})});
 
-        await pddlExecutor.exec( plan ).catch(err => {throw err});
+        for (const step in plan){
+            const action = plan[step].action;
 
+            switch (action) {
+                case 'MOVE_RIGHT':
+                    await actionStealAndMove('right', true).catch(err => {throw err});
+                    break;
+                case 'MOVE_LEFT':
+                    await actionStealAndMove('left', true).catch(err => {throw err});
+                    break;
+                case 'MOVE_UP':
+                    await actionStealAndMove('up', true).catch(err => {throw err});
+                    break;
+                case 'MOVE_DOWN':
+                    await actionStealAndMove('down', true).catch(err => {throw err});
+                    break;
+            }
+        }       
     }
 
 }
@@ -130,15 +141,29 @@ export class GoPickUp extends Plan {
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
-
         //console.log( plan );
-        const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => actionStealAndMove('right').catch(err => {throw err})}
-                                             ,{ name: 'move_left', executor: () => actionStealAndMove('left').catch(err => {throw err})}
-                                             ,{ name: 'move_up', executor: () => actionStealAndMove('up').catch(err => {throw err})}
-                                             ,{ name: 'move_down', executor: () => actionStealAndMove('down').catch(err => {throw err})}
-                                             ,{ name: 'pick_up', executor: () => actionPickUp().catch(err => {throw err})});
 
-        await pddlExecutor.exec( plan ).catch(err => {throw err});
+        for (const step in plan){
+            const action = plan[step].action;
+
+            switch (action) {
+                case 'MOVE_RIGHT':
+                    await actionStealAndMove('right').catch(err => {throw err});
+                    break;
+                case 'MOVE_LEFT':
+                    await actionStealAndMove('left').catch(err => {throw err});
+                    break;
+                case 'MOVE_UP':
+                    await actionStealAndMove('up').catch(err => {throw err});
+                    break;
+                case 'MOVE_DOWN':
+                    await actionStealAndMove('down').catch(err => {throw err});
+                    break;
+                case 'PICK_UP':
+                    await actionPickUp().catch(err => {throw err});
+                    break;
+            }
+        }       
     }
 
 }
@@ -176,18 +201,30 @@ export class GoDelivery extends Plan {
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
-
         //console.log( plan );
-        const pddlExecutor = new PddlExecutor( { name: 'move_right', executor: () => actionStealAndMove('right').catch(err => {throw err})}
-                                             ,{ name: 'move_left', executor: () => actionStealAndMove('left').catch(err => {throw err})}
-                                             ,{ name: 'move_up', executor: () => actionStealAndMove('up').catch(err => {throw err})}
-                                             ,{ name: 'move_down', executor: () => actionStealAndMove('down').catch(err => {throw err})}
-                                             ,{ name: 'put_down_on_delivery', executor: () => actionPutDown().catch(err => {throw err})}
-                                             ,{ name: 'put_down', executor: () => actionPutDown().catch(err => {throw err})});
 
-        await pddlExecutor.exec( plan ).catch(err => {throw err});
+        for (const step in plan){
+            const action = plan[step].action;
+
+            switch (action) {
+                case 'MOVE_RIGHT':
+                    await actionStealAndMove('right').catch(err => {throw err});
+                    break;
+                case 'MOVE_LEFT':
+                    await actionStealAndMove('left').catch(err => {throw err});
+                    break;
+                case 'MOVE_UP':
+                    await actionStealAndMove('up').catch(err => {throw err});
+                    break;
+                case 'MOVE_DOWN':
+                    await actionStealAndMove('down').catch(err => {throw err});
+                    break;
+                case 'PUT_DOWN_ON_DELIVERY':
+                    await actionPutDown().catch(err => {throw err});
+                    break;
+            }
+        }
     }
-
 }
 
 function readFile ( path ) {

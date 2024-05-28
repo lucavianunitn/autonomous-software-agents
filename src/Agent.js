@@ -56,11 +56,8 @@ export class Agent {
                 const intention = this.#intention_queue[0];
 
                 // Start achieving intention
-                await intention.achieve()
-                // Catch eventual error and continue
-                .catch( error => {
+                await intention.achieve().catch( error => {
                     console.log(error);
-                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
