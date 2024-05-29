@@ -74,13 +74,13 @@ export class Agent {
                     let carriedParcels = this.getCarriedParcel();
     
                     if (carriedParcels > 0){
-                        this.queue("go_delivery", this.#xPos, this.#yPos, this.#map);
+                        this.queue("go_delivery", this.#xPos, this.#yPos, this.#map, this.#perceivedAgents);
                     }
                     else if (parcel !== undefined) {
-                        this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map);
+                        this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map, this.#perceivedAgents);
                     }
                     else {
-                        this.queue("random", this.#xPos, this.#yPos, this.#map);
+                        this.queue("random", this.#xPos, this.#yPos, this.#map, this.#perceivedAgents);
                     }
                     // TODO: random move if map is note defined?
                 }

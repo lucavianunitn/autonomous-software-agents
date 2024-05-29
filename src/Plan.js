@@ -44,6 +44,15 @@ class Plan {
         return await sub_intention.achieve();
     }
 
+    considerNearAgents(beliefset, agentX, agentY, perceivedAgents){
+        perceivedAgents.forEach((agentObstacle) => {
+            if(Math.abs(agentObstacle.x-agentX) <= 1 || Math.abs(agentObstacle.y-agentY) <= 1){
+                beliefset.declare('blocked tile_'+agentObstacle.x+'_'+agentObstacle.y); 
+                // the tile my agent is near to is blocked by another one, are not considered more distant agents because we assume that in the meanwhile they are in another position
+            }
+        })
+        return beliefset;
+    }
 }
 
 /**
@@ -55,13 +64,15 @@ export class ReachRandomDelivery extends Plan {
         return desire == 'random';
     }
 
-    async execute (agentX, agentY, map) {
+    async execute (agentX, agentY, map, perceivedAgents) {
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
             return Promise.resolve(1);
 
-        const beliefset = map.returnAsBeliefset()
+        let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
+
+        beliefset = this.considerNearAgents(beliefset, agentX, agentY, perceivedAgents);
 
         beliefset.declare('me me');
         beliefset.declare('at me tile_'+agentX+'_'+agentY);
@@ -114,14 +125,15 @@ export class GoPickUp extends Plan {
         return desire == 'go_pick_up';
     }
 
-    async execute (agentX, agentY, parcelX, parcelY, parcelId, map) {
+    async execute (agentX, agentY, parcelX, parcelY, parcelId, map, perceivedAgents) {
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false ||
             Number.isInteger(parcelX) === false || Number.isInteger(agentY) === false)
             return Promise.resolve(1);
 
-        const beliefset = map.returnAsBeliefset()
+        let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
+        beliefset = this.considerNearAgents(beliefset, agentX, agentY, perceivedAgents);
 
         beliefset.declare(`me me`);
         beliefset.declare(`at me tile_${agentX}_${agentY}`);
@@ -174,13 +186,14 @@ export class GoDelivery extends Plan {
         return desire == 'go_delivery';
     }
 
-    async execute (agentX, agentY, map) {
+    async execute (agentX, agentY, map, perceivedAgents) {
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
             return Promise.resolve(1);
 
-        const beliefset = map.returnAsBeliefset()
+        let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
+        beliefset = this.considerNearAgents(beliefset, agentX, agentY, perceivedAgents);
 
         beliefset.declare(`me me`);
         beliefset.declare(`at me tile_${agentX}_${agentY}`);

@@ -14,13 +14,14 @@ export async function actionStealAndMove(direction, intentionRevisionOnNewParcel
     if(intentionRevisionOnNewParcel){
         const perceivedParcels = await new Promise((resolve, reject) => {
             client.onParcelsSensing((perceivedParcels) => {
-                resolve(perceivedParcels);
+                for (const parcel of perceivedParcels){
+                    if(!parcel.carriedBy){
+                        reject("Agent perceived a new free package, needed an IntentionRevision"); // DO an intention revision, there is a free package
+                    }
+                }
+                resolve(perceivedParcels); // DON'T do an intention revision
             });
-        });
-          
-        if (perceivedParcels.length > 0){
-            throw "Agent perceived a new package, needed an IntentionRevision";
-        }
+        }).catch(err => {throw err});
     }
 
     await actionPutDown();

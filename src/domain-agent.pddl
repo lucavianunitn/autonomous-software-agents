@@ -4,6 +4,7 @@
     (:predicates
         (me ?me)
         (tile ?t)
+        (blocked ?t)
         (up ?t1 ?t2)
         (down ?t1 ?t2)
         (left ?t1 ?t2)
@@ -17,25 +18,25 @@
     
     (:action move_up
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (up ?from ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (up ?from ?to))
         :effect (and (not (at ?me ?from)) (at ?me ?to))
     )
 
     (:action move_down
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (down ?from ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (down ?from ?to))
         :effect (and (not (at ?me ?from)) (at ?me ?to))
     )
 
     (:action move_left
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (left ?from ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (left ?from ?to))
         :effect (and (not (at ?me ?from)) (at ?me ?to))
     )
 
     (:action move_right
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (right ?from ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (right ?from ?to))
         :effect (and (not (at ?me ?from)) (at ?me ?to))
     )
 
