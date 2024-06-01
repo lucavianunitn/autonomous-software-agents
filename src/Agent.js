@@ -40,20 +40,37 @@ export class Agent {
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
     constructor(agentToken) {
-
         this.#agentToken = agentToken;
-
         this.setupClient();
     }
 
+    get xPos() { return this.#xPos; }
+    get yPos() { return this.#yPos; }
+    get map() { return this.#map; }
+    get eventEmitter() { return this.#eventEmitter; }
+    get perceivedParcels() { return this.#perceivedParcels; }
+    get perceivedAgents() { return this.#perceivedAgents; }
+
     async intentionLoop ( ) {
+
+        this.eventEmitter.on("found free parcels", () => {
+            const intention = this.getCurrentIntention();
+
+            if (intention === undefined)
+                return;
+
+            if (intention.desire === "random")
+                intention.stop();
+        })
+
         while ( true ) {
+
             // Consumes intention_queue if not empty
             if ( this.#intention_queue.length > 0 ) {
-                console.log( 'intentionRevision.loop', this.#intention_queue.map(i=>i.predicate) );
+
+                //console.log( 'intentionRevision.loop', this.#intention_queue.map(i=>i.predicate) );
             
-                // Current intention
-                const intention = this.#intention_queue[0];
+                const intention = this.getCurrentIntention();
 
                 // Start achieving intention
                 await intention.achieve().catch( error => {
@@ -62,10 +79,11 @@ export class Agent {
 
                 // Remove from the queue
                 this.#intention_queue.shift();
+
             }
             else {
 
-                let isMapDefined = this.#map !== undefined
+                let isMapDefined = this.#map !== undefined;
 
                 if (isMapDefined){
                     let bestParcelId = this.getBestParcel()[1];
@@ -74,17 +92,20 @@ export class Agent {
                     let carriedParcels = this.getCarriedParcel();
     
                     if (carriedParcels > 0){
-                        this.queue("go_delivery", this.#xPos, this.#yPos, this.#map, this.#perceivedAgents);
+                        this.queue("go_delivery");
                     }
                     else if (parcel !== undefined) {
-                        this.queue("go_pick_up", this.#xPos, this.#yPos, parcel.x, parcel.y, parcel.id, this.#map, this.#perceivedAgents);
+                        this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
                     }
                     else {
-                        this.queue("random", this.#xPos, this.#yPos, this.#map, this.#perceivedAgents);
+                        this.queue("random");
                     }
-                    // TODO: random move if map is note defined?
                 }
+
+                // TODO: random move if map is not defined?
+
             }
+
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
         }
@@ -95,7 +116,7 @@ export class Agent {
         if ( this.#intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
             return; // intention is already queued
 
-        console.log('IntentionRevisionReplace.push', predicate);
+        //console.log('IntentionRevisionReplace.push', predicate);
         const intention = new Intention(this, desire, predicate);
         this.#intention_queue.push(intention);
     }
@@ -105,6 +126,10 @@ export class Agent {
         for (const intention of this.#intention_queue) {
             intention.stop();
         }
+    }
+
+    getCurrentIntention() {
+        return this.#intention_queue[0];
     }
 
     /**
@@ -215,8 +240,16 @@ export class Agent {
 
             this.#perceivedParcels.clear();
 
-            for (const parcel of perceivedParcels)
+            let notTakenParcels = false;
+
+            for (const parcel of perceivedParcels) {
                 this.#perceivedParcels.set(parcel.id, parcel);
+                // Check if at least one parcel is not taken
+                notTakenParcels = notTakenParcels ? true : parcel.carriedBy === null;
+            }
+
+            if (notTakenParcels)
+                this.#eventEmitter.emit("found free parcels");
             
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 

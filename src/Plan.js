@@ -1,5 +1,5 @@
 import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Beliefset } from "@unitn-asa/pddl-client";
-import { actionMove, actionStealAndMove, actionPickUp, actionPutDown } from "./actions.js";
+import { actionMove, actionPickUp, actionPutDown } from "./actions.js";
 import fs from 'fs';
 
 class Plan {
@@ -9,9 +9,6 @@ class Plan {
      */
     #parent;
 
-    // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
-    #sub_intentions = [];
-
     // This is used to stop the plan
     #stopped = false;
 
@@ -19,29 +16,11 @@ class Plan {
         this.#parent = parent;
     }
 
-    get stopped () {
-        return this.#stopped;
-    }
+    get parent() { return this.#parent; }
+    get stopped() { return this.#stopped; }
 
     stop () {
-        // this.log( 'stop plan' );
         this.#stopped = true;
-        for ( const i of this.#sub_intentions ) {
-            i.stop();
-        }
-    }
-
-    log ( ...args ) {
-        if ( this.#parent && this.#parent.log )
-            this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
-    }
-
-    async subIntention ( predicate ) {
-        const sub_intention = new Intention( this, predicate );
-        this.#sub_intentions.push( sub_intention );
-        return await sub_intention.achieve();
     }
 
     considerNearAgents(beliefset, agentX, agentY, perceivedAgents){
@@ -55,19 +34,21 @@ class Plan {
     }
 }
 
-/**
- * TODO: find a way to implement the stoppig action
- */
 export class ReachRandomDelivery extends Plan {
 
     static isApplicableTo ( desire ) {
-        return desire == 'random';
+        return desire === 'random';
     }
 
-    async execute (agentX, agentY, map, perceivedAgents) {
+    async execute () {
+
+        let agentX = this.parent.xPos;
+        let agentY = this.parent.yPos;
+        let map = this.parent.map;
+        let perceivedAgents = this.parent.perceivedAgents;
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
-            return Promise.resolve(1);
+            throw {message: "Invalid parameters"};
 
         let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
@@ -98,20 +79,24 @@ export class ReachRandomDelivery extends Plan {
         //console.log( plan );
 
         for (const step in plan){
+
+            if (this.stopped)
+                throw {message: `Stopped Plan ReachRandomDelivery`};
+
             const action = plan[step].action;
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionStealAndMove('right', true).catch(err => {throw err});
+                    await actionMove('right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionStealAndMove('left', true).catch(err => {throw err});
+                    await actionMove('left');
                     break;
                 case 'MOVE_UP':
-                    await actionStealAndMove('up', true).catch(err => {throw err});
+                    await actionMove('up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionStealAndMove('down', true).catch(err => {throw err});
+                    await actionMove('down');
                     break;
             }
         }       
@@ -125,11 +110,17 @@ export class GoPickUp extends Plan {
         return desire == 'go_pick_up';
     }
 
-    async execute (agentX, agentY, parcelX, parcelY, parcelId, map, perceivedAgents) {
+    async execute (parcelX, parcelY, parcelId) {
 
+        let agentX = this.parent.xPos;
+        let agentY = this.parent.yPos;
+        let map = this.parent.map;
+        let perceivedAgents = this.parent.perceivedAgents;
+
+        // This prevents the definition of a pddl problem with partial coordinates (like 15.4) that would brake the execution.
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false ||
             Number.isInteger(parcelX) === false || Number.isInteger(agentY) === false)
-            return Promise.resolve(1);
+            throw {message: "Invalid parameters"};
 
         let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
@@ -156,23 +147,27 @@ export class GoPickUp extends Plan {
         //console.log( plan );
 
         for (const step in plan){
+
+            if (this.stopped)
+                throw {message: `Stopped Plan GoPickUp`};
+
             const action = plan[step].action;
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionStealAndMove('right').catch(err => {throw err});
+                    await actionMove('right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionStealAndMove('left').catch(err => {throw err});
+                    await actionMove('left');
                     break;
                 case 'MOVE_UP':
-                    await actionStealAndMove('up').catch(err => {throw err});
+                    await actionMove('up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionStealAndMove('down').catch(err => {throw err});
+                    await actionMove('down');
                     break;
                 case 'PICK_UP':
-                    await actionPickUp().catch(err => {throw err});
+                    await actionPickUp();
                     break;
             }
         }       
@@ -186,10 +181,15 @@ export class GoDelivery extends Plan {
         return desire == 'go_delivery';
     }
 
-    async execute (agentX, agentY, map, perceivedAgents) {
+    async execute () {
+
+        let agentX = this.parent.xPos;
+        let agentY = this.parent.yPos;
+        let map = this.parent.map;
+        let perceivedAgents = this.parent.perceivedAgents;
 
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
-            return Promise.resolve(1);
+            throw {message: "Invalid parameters"};
 
         let beliefset = map.returnAsBeliefset()
         // console.log(map.returnAsBeliefset().toPddlString())
@@ -210,30 +210,34 @@ export class GoDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        //console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
         //console.log( plan );
 
         for (const step in plan){
+
+            if (this.stopped)
+                throw {message: `Stopped Plan GoDelivery`};
+
             const action = plan[step].action;
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionStealAndMove('right').catch(err => {throw err});
+                    await actionMove('right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionStealAndMove('left').catch(err => {throw err});
+                    await actionMove('left');
                     break;
                 case 'MOVE_UP':
-                    await actionStealAndMove('up').catch(err => {throw err});
+                    await actionMove('up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionStealAndMove('down').catch(err => {throw err});
+                    await actionMove('down');
                     break;
                 case 'PUT_DOWN_ON_DELIVERY':
-                    await actionPutDown().catch(err => {throw err});
+                    await actionPutDown();
                     break;
             }
         }

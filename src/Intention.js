@@ -7,22 +7,13 @@ export class Intention {
 
     #desire;
 
-    // Plan currently used for achieving the intention 
-    #current_plan;
+    #current_plan; // Plan currently used for achieving the intention 
     
-    // This is used to stop the intention
-    #stopped = false;
-
+    #stopped = false; // This is used to stop the intention
     #started = false;
 
-    /**
-     * #parent refers to caller
-     */
-    #parent;
+    #parent; // Refers to caller (the agent)
 
-    /**
-     * predicate is in the form ['go_to', x, y]
-     */
     #predicate;
 
     constructor ( parent, desire, predicate ) {
@@ -31,35 +22,19 @@ export class Intention {
         this.#predicate = predicate;
     }
 
-    get desire() {
-        return this.#desire;
-    }
+    get desire() { return this.#desire; }
 
-    get stopped () {
-        return this.#stopped;
-    }
+    get stopped () { return this.#stopped; }
 
-    get parent () {
-        return this.#parent;
-    }
+    get parent () { return this.#parent; }
 
-    get predicate () {
-        return this.#predicate;
-    }
+    get predicate () { return this.#predicate; }
 
     stop() {
         // this.log( 'stop intention', ...this.#predicate );
         this.#stopped = true;
         if (this.#current_plan)
             this.#current_plan.stop();
-    }
-
-    // TODO: fix this
-    log ( ...args ) {
-        if ( this.#parent && this.#parent.log )
-            this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
     }
 
     /**
@@ -76,33 +51,31 @@ export class Intention {
         for (const planClass of planLibrary) {
 
             // if stopped then quit
-            if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
+            if ( this.stopped ) throw {message : 'Stopped Intention', ...this.predicate};
 
             // if plan is 'statically' applicable
             if ( planClass.isApplicableTo( this.desire ) ) {
                 // plan is instantiated
                 this.#current_plan = new planClass(this.parent);
-                this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
+                console.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
                 // and plan is executed and result returned
                 try {
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
-                    this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
-                    return plan_res
+                    console.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
+                    return plan_res;
                 // or errors are caught so to continue with next plan
-                } catch (error) {
-                    console.log(error);
-                    this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', ...error );
+                } catch (msg) {
+                    console.log(msg);
                 }
             }
 
         }
 
         // if stopped then quit
-        if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
+        if ( this.stopped ) throw {message : 'Stopped Intention', ...this.predicate};
 
         // no plans have been found to satisfy the intention
-        // this.log( 'no plan satisfied the intention ', ...this.predicate );
-        throw ['no plan satisfied the intention ', ...this.predicate ]
+        throw {message : 'No plan satisfied the intention ', ...this.predicate };
     }
 
 }
