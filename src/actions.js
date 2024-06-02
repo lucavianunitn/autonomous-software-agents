@@ -12,7 +12,7 @@ export async function actionMove(direction) {
 export async function actionPickUp() {
 
     const pickUpResult = await client.pickup();
-
+    return pickUpResult;
 }
 
 export async function actionPutDown() {

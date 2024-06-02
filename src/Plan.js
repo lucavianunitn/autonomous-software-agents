@@ -72,7 +72,7 @@ export class ReachRandomDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        //console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -140,7 +140,7 @@ export class GoPickUp extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        //console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -167,7 +167,8 @@ export class GoPickUp extends Plan {
                     await actionMove('down');
                     break;
                 case 'PICK_UP':
-                    await actionPickUp();
+                    let pickedParcels = (await actionPickUp()).length;
+                    this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                     break;
             }
         }       
@@ -238,6 +239,7 @@ export class GoDelivery extends Plan {
                     break;
                 case 'PUT_DOWN_ON_DELIVERY':
                     await actionPutDown();
+                    this.parent.carriedParcels = 0;
                     break;
             }
         }

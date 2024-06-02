@@ -50,6 +50,9 @@ export class Agent {
     get eventEmitter() { return this.#eventEmitter; }
     get perceivedParcels() { return this.#perceivedParcels; }
     get perceivedAgents() { return this.#perceivedAgents; }
+    get carriedParcels() {return this.#carriedParcels}
+
+    set carriedParcels(carriedParcels) {this.#carriedParcels = carriedParcels}
 
     async intentionLoop ( ) {
 
@@ -89,8 +92,8 @@ export class Agent {
                     let bestParcelId = this.getBestParcel()[1];
                     let parcel = this.#perceivedParcels.get(bestParcelId);
     
-                    let carriedParcels = this.getCarriedParcel();
-    
+                    let carriedParcels = this.#carriedParcels;
+
                     if (carriedParcels > 0){
                         this.queue("go_delivery");
                     }
@@ -244,9 +247,10 @@ export class Agent {
 
             for (const parcel of perceivedParcels) {
                 this.#perceivedParcels.set(parcel.id, parcel);
-                // Check if at least one parcel is not taken
-                notTakenParcels = notTakenParcels ? true : parcel.carriedBy === null;
             }
+
+            // Check if at least one parcel is not taken
+            notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
 
             if (notTakenParcels)
                 this.#eventEmitter.emit("found free parcels");
