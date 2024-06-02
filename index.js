@@ -5,5 +5,5 @@
 import { default as config } from "./config.js";
 import { Agent } from "./src/Agent.js";
 
-const agent = new Agent(config.host, config.token);
-agent.start();
+const agent = new Agent(config.token);
+agent.intentionLoop();

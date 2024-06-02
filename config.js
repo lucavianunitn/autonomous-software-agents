@@ -5,5 +5,6 @@ const config = {
 
 }
 console.log(process.env.HOST);
+console.log(process.env.TOKEN_CHALLENGE_1);
 
 export default config;

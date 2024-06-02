@@ -1,11 +1,12 @@
-import { DeliverooApi, timer } from "../../Deliveroo.js/packages/@unitn-asa/deliveroo-js-client/index.js";
+import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
+import { Intention } from "./Intention.js";
+import { default as config } from "./../config.js";
+
+export const client = new DeliverooApi(config.host, config.token);
 
 export class Agent {
-
-    #serverUrl;
-    #client;
 
     // Agent info
     #agentToken
@@ -16,6 +17,8 @@ export class Agent {
     #score;
 
     #map;
+
+    #intention_queue = new Array();
 
     #eventEmitter = new EventEmitter();
     #perceivedParcels = new Map();
@@ -36,302 +39,104 @@ export class Agent {
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(serverUrl, agentToken) {
-
-        this.#client = new DeliverooApi(serverUrl, agentToken);
-
+    constructor(agentToken) {
         this.#agentToken = agentToken;
-        this.#serverUrl = serverUrl;
-
         this.setupClient();
-
-        this.#eventEmitter.on("restart", this.start.bind(this));
     }
 
-    /**
-     * It chooses the strategy to follow based on the enviroment status the agent can perceive
-     */
-    async start() {
-        try {
-            let [bestParcelProfit, bestParcelId, bestDeliveryTile] = this.getBestParcel();
+    get xPos() { return this.#xPos; }
+    get yPos() { return this.#yPos; }
+    get map() { return this.#map; }
+    get eventEmitter() { return this.#eventEmitter; }
+    get perceivedParcels() { return this.#perceivedParcels; }
+    get perceivedAgents() { return this.#perceivedAgents; }
+    get carriedParcels() {return this.#carriedParcels}
 
-            let isMapDefined = this.#map !== undefined
-            let isAnyParcelPerceived = this.#perceivedParcels.size !== 0
-            let isThereProfitableParcel = bestParcelProfit !== 0
-            let areCarriedParcelsDeliveryThreshold = this.#carriedParcels !== 0 && this.#carriedParcels >= 3
+    set carriedParcels(carriedParcels) {this.#carriedParcels = carriedParcels}
 
-            // if map is defined and:
-            // I have less than 4 parcels but at least one OR
-            // I have at least a parcel and I dindn't see anything other valuable
-            if (isMapDefined && (areCarriedParcelsDeliveryThreshold || (this.#carriedParcels !== 0 && (!isAnyParcelPerceived || !isThereProfitableParcel)))) {
-                console.log("isAnyParcelPerceived "+isAnyParcelPerceived)
-                if(this.#strategyChosenVerbose){
-                    console.log("Parcel DELIVERY strategy chosen");
-                }
+    async intentionLoop ( ) {
 
-                await this.planDelivery();
-            } else if (!isMapDefined || !isAnyParcelPerceived || !isThereProfitableParcel) {
-                if(this.#strategyChosenVerbose){
-                    console.log("CENTER/RANDOM strategy chosen");
-                }
+        this.eventEmitter.on("found free parcels", () => {
+            const intention = this.getCurrentIntention();
 
-                await this.planSearchInCenter();
-                await this.planRandomLoop();
-            }
-            else {
-                if(this.#strategyChosenVerbose){
-                    console.log("Parcel PICKUP strategy chosen, n_parcel="+this.#perceivedParcels.size+"/ max_score= "+bestParcelProfit);
-                }
+            if (intention === undefined)
+                return;
 
-                await this.planPickUp();
-            }
-
-        }
-        catch(error) {
-            if (this.#errorMessagesVerbose) console.log(error)
-            await this.#client.timer(1000);
-            await this.planRandomLoop();
-        }
-
-        this.#eventEmitter.emit("restart");
-    }
-
-    /**
-     * Plan to search for parcels while going to the center of the map.
-     * Plan doesn't start if TileMap is not defined.
-     * Plan stops when found a parcel or when the centered tile is reached.
-     * @returns 
-     */
-    async planSearchInCenter() {
-
-        console.log("START planSearchInCenter");
-
-        const client = this.#client;
-        const map = this.#map;
-
-        if (map === undefined) {
-            console.log("END planSearchInCenter (no map)");
-            return Promise.resolve(1);
-        }
-        
-        const centeredTile = map.getCenteredTile(this.#moveToCenteredDeliveryCell);
-        const destination = [centeredTile.x,centeredTile.y];
-
-        while(true){
-
-            // Found a parcel
-            if (this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
-                console.log("END planSearchInCenter (found parcel)");
-                return Promise.resolve(1);
-            }
-
-            let [distance, path, directions] = map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-    
-            // Reached center
-            if (distance === 0) {
-                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the parcel
-                }
-                console.log("END planSearchInCenter (reached center)");
-                return Promise.resolve(1);
-            }
-            else if(distance < 0){
-                console.log("ERROR, it's not possible to reach "+destination);
-                return Promise.resolve(0);
-            }else{
-                await this.putDown();
-                await this.pickUp();
-                await client.move(directions[0]);          
-            }    
-        }
-
-    }
-
-    /**
-     * starts a loop of random movements of the agents. Every movement includes the actions of putting down and picking up
-     * a parcel.
-     */
-    async planRandomLoop() {
-
-        console.log("START planRandomLoop");
-
-        const client = this.#client;
-
-        let previous = 'right';
-    
-        while (true) {
-
-            // TileMap is defined and found a parcel
-            if (this.#map !== undefined && this.#perceivedParcels.size > 0 && this.getBestParcel()[0] > 0) {
-                console.log("END planRandomLoop (TileMap defined and parcel found)");
-                return Promise.resolve(1);
-            }
-    
-            await this.putDown();
-            await this.pickUp();
-    
-            let tried = [];
-    
-            while (tried.length < 4) {
-                
-                let current = {up: 'down', right: 'left', down: 'up', left: 'right'}[previous] // backward
-    
-                if (tried.length < 3) // try haed or turn (before going backward)
-                    current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random()*3)];
-                
-                if (! tried.includes(current)) {
-                    
-                    if (await client.move(current)) {
-                        //console.log( 'moved %s', current );
-                        previous = current;
-                        break; // moved, continue
-                    }
-                    
-                    tried.push(current);
-                    
-                }
-                
-            }
-    
-            if (tried.length == 4) {
-                console.log('planRandomLoop: Stucked');
-                await client.timer(1000); // stucked, wait 1 sec and retry
-            }
-        }
-    }
-
-    /**
-     * It finds the coordinates of the most rewardable parcel, 
-     * and it tries to do its pickup
-     */
-    async planPickUp() {
-
-        console.log("START planPickUp");
-
-        const client = this.#client;
-        const [bestScore, bestParcelId, bestDelivery] = this.getBestParcel();
-
-        if (bestScore === 0){ // No parcel found
-            await client.timer(500);
-            console.log("END planPickUp (no best parcel)");
-            return Promise.resolve(1);
-        }
-
-        const bestParcel = this.#perceivedParcels.get(bestParcelId);
-
-        if (await this.goTo([bestParcel.x,bestParcel.y], bestParcelId, false) === 0) return Promise.resolve(0);
-        await this.pickUp();
-
-        console.log("END planPickUp (parcel's cell reached)");
-        return Promise.resolve(1);
-    }
-
-    /**
-     * It finds the coordinates of the nearest delivery tile, 
-     * and it tries to do its parcels putdown
-     */
-    async planDelivery() {
-
-        console.log("START planDelivery");
-        let agentX = this.#xPos;
-        let agentY = this.#yPos;
-        let map = this.#map;
-        let perceivedAgents = this.#perceivedAgents;
-
-        let [distance, bestDelivery] = map.getNearestDelivery([agentX, agentY], perceivedAgents);
-
-        if (await this.goTo([bestDelivery.x, bestDelivery.y], null, true) === 0) return Promise.resolve(0); // forse sarebbe da insistere un po' di più
-        await this.putDown();
-
-        console.log("END planDelivery");
-        return Promise.resolve(1);
-    }
-
-
-    /**
-     * It will move the agent to the tile [x,y] by also considering the map structure and the presence of other agents
-     */
-    async goTo([x, y], parcelToPickup = null, imDelivering = false) {
-
-        const client = this.#client;
-        const destination = [x,y];
-
-        while(true){
-
-            let [distance, path, directions] = this.#map.pathBetweenTiles([this.#xPos,this.#yPos],destination,this.#perceivedAgents);
-
-            if(this.#pathBetweenTilesVerbose){
-                console.log("Distance "+distance);
-                console.log("Destination "+destination)
-                //console.log("path "+path);
-                //console.log("directions "+directions);   
-                //console.log("next direction "+directions[0]); 
-            }
-    
-            if (parcelToPickup !== null){ // so, I'm coming from a pickup strategy
-                const bestParcel = this.#perceivedParcels.get(parcelToPickup);
-
-                if (!bestParcel || bestParcel.carriedBy !== null){
-                    console.log("ERROR, the parcel in "+destination+" is expired or already taken by another agent ");
-                    return Promise.resolve(0);    
-                }
-            }
-
-            if (imDelivering && this.#carriedParcels === 0){ // so, I'm coming from a delivery strategy and the packages I'm carrying are expired, I can stop the strategy
-                console.log("ERROR, the parcels to bring in delivery "+destination+" are expired");
-                return Promise.resolve(0);    
-            } 
-
-            if (distance === 0) {
-                if(this.#xPos % 1 != 0 && this.#yPos % 1 != 0){ // The agent is still moving
-                    await client.timer(500); // Waiting allow the agent to pickup the parcel
-                }
-                return Promise.resolve(1);
-            }
-            else if(distance < 0){
-                console.log("ERROR, it's not possible to reach "+destination);
-                return Promise.resolve(0);
-            }else{
-                await this.putDown();
-                await this.pickUp();
-                await client.move(directions[0]);          
-            }    
-        }
-
-    }
-
-    /**
-     * It pickup the dropped parcels on the current tile, and it will update the carriedReward and carriedParcels values
-     */
-    async pickUp() {
-
-        const thisAgent = this;
-        const client = this.#client;
-        const pickUpResult = await client.pickup();
-
-        pickUpResult.forEach(function(result){
-            thisAgent.#carriedReward += result.reward;
-            thisAgent.#carriedParcels += 1;
+            if (intention.desire === "random")
+                intention.stop();
         })
 
-        return pickUpResult;
+        while ( true ) {
+
+            // Consumes intention_queue if not empty
+            if ( this.#intention_queue.length > 0 ) {
+
+                //console.log( 'intentionRevision.loop', this.#intention_queue.map(i=>i.predicate) );
+            
+                const intention = this.getCurrentIntention();
+
+                // Start achieving intention
+                await intention.achieve().catch( error => {
+                    console.log(error);
+                } );
+
+                // Remove from the queue
+                this.#intention_queue.shift();
+
+            }
+            else {
+
+                let isMapDefined = this.#map !== undefined;
+
+                if (isMapDefined){
+                    let bestParcelId = this.getBestParcel()[1];
+                    let parcel = this.#perceivedParcels.get(bestParcelId);
+    
+                    let carriedParcels = this.#carriedParcels;
+
+                    if (carriedParcels > 0){
+                        this.queue("go_delivery");
+                    }
+                    else if (parcel !== undefined) {
+                        this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
+                    }
+                    else {
+                        this.queue("random");
+                    }
+                }
+
+                // TODO: random move if map is not defined?
+
+            }
+
+            // Postpone next iteration at setImmediate
+            await new Promise( res => setImmediate( res ) );
+        }
+    }
+
+    async queue ( desire, ...predicate ) {
+        // Check if already queued
+        if ( this.#intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
+            return; // intention is already queued
+
+        //console.log('IntentionRevisionReplace.push', predicate);
+        const intention = new Intention(this, desire, predicate);
+        this.#intention_queue.push(intention);
+    }
+
+    async stop ( ) {
+        console.log( 'stop agent queued intentions');
+        for (const intention of this.#intention_queue) {
+            intention.stop();
+        }
+    }
+
+    getCurrentIntention() {
+        return this.#intention_queue[0];
     }
 
     /**
-     * It putdown the parcels on the current tile, and it will reset the carriedReward and carriedParcels values
-     */
-    async putDown() {
-
-        const client = this.#client;
-        const putDownResult = await client.putdown();
-
-        this.#carriedReward = 0;
-        this.#carriedParcels = 0;
-
-        return putDownResult;
-    }
-
-    /**
+     * TODO: improve this method
      * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
      * - the parcel value (higher is better)
      * - the parcel distance to the agent (lower is better)
@@ -375,6 +180,19 @@ export class Agent {
 
     }
 
+    getCarriedParcel() {
+        const agentID = this.#id;
+        var carriedParcels = 0;
+
+        this.#perceivedParcels.forEach(function(parcel) {
+            if (parcel.carriedBy === agentID) {
+                carriedParcels++;
+            }
+        })
+
+        return carriedParcels;
+    }
+
     /**
      * @returns the token of this agent.
      */
@@ -388,14 +206,13 @@ export class Agent {
      */
     setupClient() {
 
-        this.#client.onConnect( () => console.log( "socket",  this.#client.socket.id ) );
-
-        this.#client.onDisconnect( () => console.log( "disconnected",  this.#client.socket.id ) );
+        client.onConnect( () => console.log( "socket", client.socket.id ) );
+        client.onDisconnect( () => console.log( "disconnected", client.socket.id ) );
 
         /**
          * The event handled by this listener is emitted on agent connection.
          */
-        this.#client.onMap( ( width, height, tilesInfo ) => {
+        client.onMap( ( width, height, tilesInfo ) => {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
@@ -408,7 +225,7 @@ export class Agent {
          * For each movement there are two event: one partial and one final.
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
-        this.#client.onYou( ( {id, name, x, y, score} ) => {
+        client.onYou( ( {id, name, x, y, score} ) => {
             this.#id = id;
             this.#name = name;
             this.#xPos = x;
@@ -422,12 +239,21 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
          */
-        this.#client.onParcelsSensing( async ( perceivedParcels ) => {
+        client.onParcelsSensing( async ( perceivedParcels ) => {
 
             this.#perceivedParcels.clear();
 
-            for (const parcel of perceivedParcels)
+            let notTakenParcels = false;
+
+            for (const parcel of perceivedParcels) {
                 this.#perceivedParcels.set(parcel.id, parcel);
+            }
+
+            // Check if at least one parcel is not taken
+            notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
+
+            if (notTakenParcels)
+                this.#eventEmitter.emit("found free parcels");
             
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
@@ -437,7 +263,7 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
          */
-        this.#client.onAgentsSensing( async ( perceivedAgents ) => {
+        client.onAgentsSensing( async ( perceivedAgents ) => {
 
             this.#perceivedAgents.clear();
 
