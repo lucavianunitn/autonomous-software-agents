@@ -1,10 +1,22 @@
-const config = {
+export const configSingle = {
 
     host: process.env.HOST,
-    token: process.env.TOKEN_CHALLENGE_1
+    token: process.env.TOKEN_SINGLE
 
 }
-console.log(process.env.HOST);
-console.log(process.env.TOKEN_CHALLENGE_1);
 
-export default config;
+export const configMaster = {
+
+    host: process.env.HOST,
+    token: process.env.TOKEN_MASTER
+
+}
+
+export const configSlave = {
+
+    host: process.env.HOST,
+    token: process.env.TOKEN_SLAVE
+
+}
+// console.log(process.env.HOST);
+// console.log(process.env.TOKEN_SINGLE);

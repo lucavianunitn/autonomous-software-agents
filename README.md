@@ -17,3 +17,10 @@ Steps map related:
 
 General:
 1) BDI coherent structure
+
+
+
+Communication
+1) COndivisione agenti percepiti, fine
+2) Condivisione pacchetti, contrattazione per chi se ne occupa
+

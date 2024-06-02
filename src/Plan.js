@@ -44,6 +44,7 @@ export class ReachRandomDelivery extends Plan {
 
         let agentX = this.parent.xPos;
         let agentY = this.parent.yPos;
+        let role = this.parent.role;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -87,16 +88,16 @@ export class ReachRandomDelivery extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove('right');
+                    await actionMove(role, 'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove('left');
+                    await actionMove(role, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove('up');
+                    await actionMove(role, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove('down');
+                    await actionMove(role, 'down');
                     break;
             }
         }       
@@ -114,6 +115,7 @@ export class GoPickUp extends Plan {
 
         let agentX = this.parent.xPos;
         let agentY = this.parent.yPos;
+        let role = this.parent.role;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -155,19 +157,19 @@ export class GoPickUp extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove('right');
+                    await actionMove(role,'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove('left');
+                    await actionMove(role, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove('up');
+                    await actionMove(role, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove('down');
+                    await actionMove(role, 'down');
                     break;
                 case 'PICK_UP':
-                    let pickedParcels = (await actionPickUp()).length;
+                    let pickedParcels = (await actionPickUp(role)).length;
                     this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                     break;
             }
@@ -186,6 +188,7 @@ export class GoDelivery extends Plan {
 
         let agentX = this.parent.xPos;
         let agentY = this.parent.yPos;
+        let role = this.parent.role;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -226,19 +229,19 @@ export class GoDelivery extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove('right');
+                    await actionMove(role, 'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove('left');
+                    await actionMove(role, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove('up');
+                    await actionMove(role, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove('down');
+                    await actionMove(role, 'down');
                     break;
                 case 'PUT_DOWN_ON_DELIVERY':
-                    await actionPutDown();
+                    await actionPutDown(role);
                     this.parent.carriedParcels = 0;
                     break;
             }
