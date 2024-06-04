@@ -4,13 +4,12 @@ import { EventEmitter } from "events";
 import { Intention } from "./Intention.js";
 import { configMaster as config } from "../config.js";
 
-export const client = new DeliverooApi(config.host, config.token);
-
 export class Agent {
+    client
 
     // Agent info
     #agentToken
-    #role = "master"
+    #role
     #id;
     #name;
     #xPos;
@@ -42,8 +41,11 @@ export class Agent {
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(agentToken) {
-        this.#agentToken = agentToken;
+    constructor(role, host, token) {
+        this.#agentToken = token;
+        this.#role = role;
+        this.client = new DeliverooApi(host, token);
+
         this.setupClient();
     }
 
@@ -212,13 +214,13 @@ export class Agent {
      */
     setupClient() {
 
-        client.onConnect( () => console.log( "socket", client.socket.id ) );
-        client.onDisconnect( () => console.log( "disconnected", client.socket.id ) );
+        this.client.onConnect( () => console.log( "socket", this.client.socket.id ) );
+        this.client.onDisconnect( () => console.log( "disconnected", this.client.socket.id ) );
 
         /**
          * The event handled by this listener is emitted on agent connection.
          */
-        client.onMap( ( width, height, tilesInfo ) => {
+        this.client.onMap( ( width, height, tilesInfo ) => {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
@@ -231,7 +233,7 @@ export class Agent {
          * For each movement there are two event: one partial and one final.
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
-        client.onYou( ( {id, name, x, y, score} ) => {
+        this.client.onYou( ( {id, name, x, y, score} ) => {
             this.#id = id;
             this.#name = name;
             this.#xPos = x;
@@ -245,7 +247,7 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
          */
-        client.onParcelsSensing( async ( perceivedParcels ) => {
+        this.client.onParcelsSensing( async ( perceivedParcels ) => {
 
             this.#perceivedParcels.clear();
 
@@ -262,7 +264,7 @@ export class Agent {
                 this.#eventEmitter.emit("found free parcels"); // intention revision is performed
             
             if (perceivedParcels.length !== 0){
-                await client.say( this.#teammateId, { // share parcels sensed with teammate
+                await this.client.say( this.#teammateId, { // share parcels sensed with teammate
                     operation: "share_parcels",
                     body: perceivedParcels
                 } );
@@ -276,7 +278,7 @@ export class Agent {
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
          */
-        client.onAgentsSensing( async ( perceivedAgents ) => {
+        this.client.onAgentsSensing( async ( perceivedAgents ) => {
 
             this.#perceivedAgents.clear();
 
@@ -284,7 +286,7 @@ export class Agent {
                 this.#perceivedAgents.set(agent.id, agent);
             
             if (perceivedAgents.length !== 0){
-                await client.say( this.#teammateId, { // share agents sensed with teammate
+                await this.client.say( this.#teammateId, { // share agents sensed with teammate
                     operation: "share_agents",
                     body: perceivedAgents
                 } );
@@ -297,7 +299,7 @@ export class Agent {
         /**
          * The event handled by this listener is emitted when every agent is sharing
          */
-        client.onMsg( (id, name, msg, reply) => {
+        this.client.onMsg( (id, name, msg, reply) => {
             if (id !== this.#teammateId) return;
             
             if(this.#onReceivedMsgVerbose){

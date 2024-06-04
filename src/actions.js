@@ -14,6 +14,12 @@ function getClient(agentType){
         case 'slave':
             token =  process.env.TOKEN_SLAVE;
             break;
+        case 'agent_1':
+            token =  process.env.TOKEN_AGENT1;
+            break;
+        case 'agent_2':
+            token =  process.env.TOKEN_AGENT2;
+            break;    
     }
 
     return new DeliverooApi(host, token);

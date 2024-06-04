@@ -34,17 +34,16 @@ export class Agent {
     #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
     #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #onReceivedMsgVerbose = process.env.ON_RECEIVED_MSG_VERBOSE === "true"
     #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
     #strategyChosenVerbose = process.env.STRATEGY_CHOSEN_VERBOSE === "true"
     #errorMessagesVerbose = process.env.ERROR_MESSAGES_VERBOSE === "true"
-
     // Other flags
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
     constructor(agentToken) {
         this.#agentToken = agentToken;
-
         this.setupClient();
     }
 
@@ -93,7 +92,6 @@ export class Agent {
 
             }
             else {
-
                 let isMapDefined = this.#map !== undefined;
 
                 if (isMapDefined){
@@ -260,10 +258,9 @@ export class Agent {
             // Check if at least one parcel is not taken
             notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
 
-            if (notTakenParcels) // intention revision is performed
-                this.#eventEmitter.emit("found free parcels");
+            if (notTakenParcels)
+                this.#eventEmitter.emit("found free parcels"); // intention revision is performed
             
-
             if (perceivedParcels.length !== 0){
                 await client.say( this.#teammateId, { // share parcels sensed with teammate
                     operation: "share_parcels",
@@ -303,8 +300,10 @@ export class Agent {
         client.onMsg( (id, name, msg, reply) => {
             if (id !== this.#teammateId) return;
             
-            console.log(`${this.#role}: received ${msg.operation} message with body`);
-            console.log(msg.body);
+            if(this.#onReceivedMsgVerbose){
+                console.log(`${this.#role}: received ${msg.operation} message with body`);
+                console.log(msg.body);    
+            }
 
             switch (msg.operation) {
                 case 'share_parcels':
