@@ -254,7 +254,7 @@ export class Agent {
             // Check if at least one parcel is not taken
             notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
 
-            if (notTakenParcels)
+            if (notTakenParcels) // intention revision is performed
                 this.#eventEmitter.emit("found free parcels");
             
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
@@ -275,6 +275,14 @@ export class Agent {
                 if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
+
+        /**
+         * The event handled by this listener is emitted when every agent is sharing
+         */
+        client.onMsg( (id, name, msg, reply) => {
+            console.log("MESSAGE RECEIVED")
+            console.log("SLAVE: new msg received from", msg.sender, " with op ",msg.operation," parcels ",msg.body);
+        });
     }
 
     printDebug() {

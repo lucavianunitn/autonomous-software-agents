@@ -259,8 +259,15 @@ export class Agent {
             notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
 
             if (notTakenParcels)
-                this.#eventEmitter.emit("found free parcels");
+                this.#eventEmitter.emit("found free parcels"); // intention revision is performed
             
+            if (perceivedParcels.length !== 0){
+                await client.say( this.#teammateId, { // share parcels sensed with teammate
+                    operation: "share_parcels",
+                    body: perceivedParcels
+                } );
+            }
+
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         })
@@ -276,9 +283,49 @@ export class Agent {
             for (const agent of perceivedAgents)
                 this.#perceivedAgents.set(agent.id, agent);
             
-                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+            if (perceivedAgents.length !== 0){
+                await client.say( this.#teammateId, { // share agents sensed with teammate
+                    operation: "share_agents",
+                    body: perceivedAgents
+                } );
+            }
+
+            if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
+
+        /**
+         * The event handled by this listener is emitted when every agent is sharing
+         */
+        client.onMsg( (id, name, msg, reply) => {
+            if (id !== this.#teammateId) return;
+            
+            console.log(`${this.#role}: received ${msg.operation} message with body`);
+            console.log(msg.body);
+
+            switch (msg.operation) {
+                case 'share_parcels':
+                    let notTakenParcels = false;
+
+                    for (const parcel of msg.body) {
+                        this.#perceivedParcels.set(parcel.id, parcel);
+                    }
+
+                    // Check if at least one parcel is not taken
+                    notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
+
+                    if (notTakenParcels)
+                        this.#eventEmitter.emit("found free parcels"); // intention revision is performed
+
+                    break;
+                case 'share_agents':
+                    for (const agent of msg.body)
+                        if(agent.id !== this.#id) this.#perceivedAgents.set(agent.id, agent);
+        
+                    if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+                    break;
+            }
+        });
     }
 
     printDebug() {
