@@ -1,5 +1,5 @@
 import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Beliefset } from "@unitn-asa/pddl-client";
-import { actionMove, actionPickUp, actionPutDown } from "./actions.js";
+import { actionMove, actionPickUp, actionPutDown, actionRandomMove } from "./actions.js";
 import fs from 'fs';
 
 class Plan {
@@ -62,9 +62,6 @@ export class ReachRandomDelivery extends Plan {
 
         let rndDelivery = map.getRandomDelivery();
 
-        while (rndDelivery.x === agentX && rndDelivery.y === agentY)
-            rndDelivery = map.getRandomDelivery();
-
         var pddlProblem = new PddlProblem(
             'deliveroo',
             beliefset.objects.join(' '),
@@ -102,6 +99,28 @@ export class ReachRandomDelivery extends Plan {
                     break;
             }
         }       
+    }
+
+}
+
+export class RandomWalk extends Plan {
+
+    static isApplicableTo ( desire ) {
+        return desire === 'random';
+    }
+
+    async execute () {
+
+        let role = this.parent.role;
+
+        let prevMove = 'right';
+
+        for (let i=0; i<10; i++) {
+
+            prevMove = await actionRandomMove(role, prevMove);
+
+        }
+
     }
 
 }
@@ -350,6 +369,7 @@ function readFile ( path ) {
 
 export const planLibrary = [];
 planLibrary.push( ReachRandomDelivery );
+planLibrary.push( RandomWalk );
 planLibrary.push( GoPickUp );
 planLibrary.push( GoDelivery );
 planLibrary.push( GoDeliveryPeers );

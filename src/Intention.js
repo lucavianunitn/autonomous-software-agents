@@ -1,4 +1,5 @@
 import { planLibrary } from "./Plan.js";
+import { shuffle } from "./utilities.js";
 
 /**
  * Intention
@@ -46,6 +47,8 @@ export class Intention {
             return this;
         else
             this.#started = true;
+
+        shuffle(planLibrary);
 
         // Trying all plans in the library
         for (const planClass of planLibrary) {
