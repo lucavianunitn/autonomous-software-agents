@@ -265,6 +265,7 @@ export class GoDeliveryPeers extends Plan {
         let teammateX = this.parent.xPosTeammate;
         let teammateY = this.parent.yPosTeammate;
         let role = this.parent.role;
+        let teammateRole = this.parent.teammateRole;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -301,7 +302,7 @@ export class GoDeliveryPeers extends Plan {
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
-        //console.log( plan );
+        console.log( plan );
 
         for (const step in plan){
 
@@ -309,27 +310,28 @@ export class GoDeliveryPeers extends Plan {
                 throw {message: `Stopped Plan GoDeliveryPeers`};
 
             const action = plan[step].action;
+            const actor = plan[step]["args"][0] === "ME" ? role : teammateRole;
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove(role, 'right');
+                    await actionMove(actor, 'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove(role, 'left');
+                    await actionMove(actor, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove(role, 'up');
+                    await actionMove(actor, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove(role, 'down');
+                    await actionMove(actor, 'down');
                     break;
                 case 'PICK_UP':
-                    let pickedParcels = (await actionPickUp(role)).length;
+                    let pickedParcels = (await actionPickUp(actor)).length;
                     this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                     break;
                 case 'PUT_DOWN':
                 case 'PUT_DOWN_ON_DELIVERY':
-                    await actionPutDown(role);
+                    await actionPutDown(actor);
                     this.parent.carriedParcels = 0;
                     break;
             }

@@ -17,6 +17,7 @@ export class Agent {
     #score;
 
     #teammateId
+    #teammateRole
     #xPosTeammate
     #yPosTeammate
 
@@ -43,10 +44,12 @@ export class Agent {
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(role, host, token) {
+    constructor(role, host, token, teammateRole) {
         this.#agentToken = token;
         this.#role = role;
         this.client = new DeliverooApi(host, token);
+
+        this.#teammateRole = teammateRole;
 
         this.setupClient();
     }
@@ -55,6 +58,7 @@ export class Agent {
     get xPos() { return this.#xPos; }
     get yPos() { return this.#yPos; }
     get teammateId() { return this.#teammateId; }
+    get teammateRole() { return this.#teammateRole; }
     get xPosTeammate() { return this.#xPosTeammate; }
     get yPosTeammate() { return this.#yPosTeammate; }
     get role() { return this.#role; }
@@ -341,7 +345,7 @@ export class Agent {
                     this.#xPosTeammate = Math.round(msg.body.x);
                     this.#yPosTeammate = Math.round(msg.body.y);
 
-                    // console.log("AGENT "+this.#role+" received peers position "+this.#xPosTeammate+" "+this.#yPosTeammate)
+                    console.log("AGENT "+this.#role+" received peers position "+this.#xPosTeammate+" "+this.#yPosTeammate)
                     break;
             }
         });
