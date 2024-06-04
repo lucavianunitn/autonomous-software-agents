@@ -17,6 +17,8 @@ export class Agent {
     #score;
 
     #teammateId
+    #xPosTeammate
+    #yPosTeammate
 
     #map;
 
@@ -50,9 +52,11 @@ export class Agent {
     }
 
     get id() { return this.#id; }
-    get teammateId() { return this.#teammateId; }
     get xPos() { return this.#xPos; }
     get yPos() { return this.#yPos; }
+    get teammateId() { return this.#teammateId; }
+    get xPosTeammate() { return this.#xPosTeammate; }
+    get yPosTeammate() { return this.#yPosTeammate; }
     get role() { return this.#role; }
     get map() { return this.#map; }
     get eventEmitter() { return this.#eventEmitter; }
@@ -103,7 +107,7 @@ export class Agent {
                     let carriedParcels = this.#carriedParcels;
 
                     if (carriedParcels > 0){
-                        this.queue("go_delivery");
+                        this.queue("go_delivery_peers");
                     }
                     else if (parcel !== undefined) {
                         this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
@@ -233,12 +237,17 @@ export class Agent {
          * For each movement there are two event: one partial and one final.
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
-        this.client.onYou( ( {id, name, x, y, score} ) => {
+        this.client.onYou( async ( {id, name, x, y, score} ) => {
             this.#id = id;
             this.#name = name;
             this.#xPos = x;
             this.#yPos = y;
             this.#score = score;
+
+            await this.client.say( this.#teammateId, { // share own position with teammate
+                operation: "share_own_position",
+                body: {"x":x, "y":y}
+            } );
 
             if(this.#onYouVerbose) this.printDebug();
         } )
@@ -327,6 +336,12 @@ export class Agent {
                         if(agent.id !== this.#id) this.#perceivedAgents.set(agent.id, agent);
         
                     if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+                    break;
+                case 'share_own_position':
+                    this.#xPosTeammate = Math.round(msg.body.x);
+                    this.#yPosTeammate = Math.round(msg.body.y);
+
+                    // console.log("AGENT "+this.#role+" received peers position "+this.#xPosTeammate+" "+this.#yPosTeammate)
                     break;
             }
         });

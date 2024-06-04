@@ -58,6 +58,7 @@ export class ReachRandomDelivery extends Plan {
 
         beliefset.declare('me me');
         beliefset.declare('at me tile_'+agentX+'_'+agentY);
+        beliefset.declare(`blocked tile_${agentX}_${agentY}`);
 
         let rndDelivery = map.getRandomDelivery();
 
@@ -130,6 +131,7 @@ export class GoPickUp extends Plan {
 
         beliefset.declare(`me me`);
         beliefset.declare(`at me tile_${agentX}_${agentY}`);
+        beliefset.declare(`blocked tile_${agentX}_${agentY}`);
         beliefset.declare(`parcel ${parcelId}`);
         beliefset.declare(`at ${parcelId} tile_${parcelX}_${parcelY}`);
 
@@ -201,6 +203,7 @@ export class GoDelivery extends Plan {
 
         beliefset.declare(`me me`);
         beliefset.declare(`at me tile_${agentX}_${agentY}`);
+        beliefset.declare(`blocked tile_${agentX}_${agentY}`);
         beliefset.declare(`parcel p`);
         beliefset.declare(`carry me p`);
         beliefset.declare(`to_deliver`);
@@ -214,7 +217,7 @@ export class GoDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        // console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -249,6 +252,91 @@ export class GoDelivery extends Plan {
     }
 }
 
+export class GoDeliveryPeers extends Plan {
+
+    static isApplicableTo ( desire ) {
+        return desire == 'go_delivery_peers';
+    }
+
+    async execute () {
+
+        let agentX = this.parent.xPos;
+        let agentY = this.parent.yPos;
+        let teammateX = this.parent.xPosTeammate;
+        let teammateY = this.parent.yPosTeammate;
+        let role = this.parent.role;
+        let map = this.parent.map;
+        let perceivedAgents = this.parent.perceivedAgents;
+
+        if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
+            throw {message: "Invalid parameters"};
+
+        let beliefset = map.returnAsBeliefset()
+        // console.log(map.returnAsBeliefset().toPddlString())
+        beliefset = this.considerNearAgents(beliefset, agentX, agentY, perceivedAgents);
+
+        beliefset.declare(`me me`);
+        beliefset.declare(`at me tile_${agentX}_${agentY}`);
+        beliefset.declare(`blocked tile_${agentX}_${agentY}`);
+
+        beliefset.declare(`me tm`);
+        beliefset.declare(`at tm tile_${teammateX}_${teammateY}`);
+        beliefset.declare(`blocked tile_${teammateX}_${teammateY}`);
+
+
+        beliefset.declare(`parcel p`);
+        beliefset.declare(`carry me p`);
+        beliefset.declare(`to_deliver`);
+
+        var pddlProblem = new PddlProblem(
+            'deliveroo',
+            beliefset.objects.join(' '),
+            beliefset.toPddlString(),
+            `and (not(to_deliver))`
+        )
+
+        //build plan
+        let problem = pddlProblem.toPddlString();
+        console.log(problem)
+        let domain = await readFile('./src/domain-agent.pddl' );
+        //console.log( domain );
+        var plan = await onlineSolver( domain, problem );
+        //console.log( plan );
+
+        for (const step in plan){
+
+            if (this.stopped)
+                throw {message: `Stopped Plan GoDeliveryPeers`};
+
+            const action = plan[step].action;
+
+            switch (action) {
+                case 'MOVE_RIGHT':
+                    await actionMove(role, 'right');
+                    break;
+                case 'MOVE_LEFT':
+                    await actionMove(role, 'left');
+                    break;
+                case 'MOVE_UP':
+                    await actionMove(role, 'up');
+                    break;
+                case 'MOVE_DOWN':
+                    await actionMove(role, 'down');
+                    break;
+                case 'PICK_UP':
+                    let pickedParcels = (await actionPickUp(role)).length;
+                    this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
+                    break;
+                case 'PUT_DOWN':
+                case 'PUT_DOWN_ON_DELIVERY':
+                    await actionPutDown(role);
+                    this.parent.carriedParcels = 0;
+                    break;
+            }
+        }
+    }
+}
+
 function readFile ( path ) {
     return new Promise( (res, rej) => {
         fs.readFile( path, 'utf8', (err, data) => {
@@ -262,3 +350,4 @@ export const planLibrary = [];
 planLibrary.push( ReachRandomDelivery );
 planLibrary.push( GoPickUp );
 planLibrary.push( GoDelivery );
+planLibrary.push( GoDeliveryPeers );
