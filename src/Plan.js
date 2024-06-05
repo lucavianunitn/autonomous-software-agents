@@ -71,7 +71,7 @@ export class ReachRandomDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        // console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -163,7 +163,7 @@ export class GoPickUp extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        // console.log(problem)
+        console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -279,8 +279,10 @@ export class GoDeliveryPeers extends Plan {
 
     async execute () {
 
+        let client = this.parent.client;
         let agentX = this.parent.xPos;
         let agentY = this.parent.yPos;
+        let teammateId = this.parent.teammateId;
         let teammateX = this.parent.xPosTeammate;
         let teammateY = this.parent.yPosTeammate;
         let role = this.parent.role;
@@ -321,7 +323,47 @@ export class GoDeliveryPeers extends Plan {
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
-        console.log( plan );
+        // console.log( plan );
+
+        var neededTeammates = false;
+        var neededTeammatesForDelivery = false;
+
+        for (const step in plan){
+            if (plan[step]["args"][0] !== "ME"){
+                neededTeammates = true;
+                
+                if(plan[step].action === "PUT_DOWN_ON_DELIVERY"){
+                    neededTeammatesForDelivery = true;
+                    break;
+                }
+                
+            }
+        }
+
+        if(neededTeammates){
+            // console.log(role+" NEED TEAMMATE");
+            if(neededTeammatesForDelivery){
+                // console.log("... ALSO FOR DELIVERY")
+
+                var reply = await client.ask( teammateId, { //seems to make sense that the availability is given by the peer when the latter is random or is delivering if it's required help in deliverying
+                    operation: "ask_availability",
+                    body: ["random", "go_delivery_peers"]
+                });
+
+            } else {
+                var reply = await client.ask( teammateId, { //if instead the help is not needed for deliverying, the peer is involved only if it is moving random
+                    operation: "ask_availability",
+                    body: ["random"]
+                });
+            }
+
+            if (reply !== true){
+                console.log("It's impossible to deliver");
+                return;
+            } else {
+                console.log("My teammate can help me to deliver");
+            }
+        }
 
         for (const step in plan){
 
@@ -329,32 +371,46 @@ export class GoDeliveryPeers extends Plan {
                 throw {message: `Stopped Plan GoDeliveryPeers`};
 
             const action = plan[step].action;
-            const actor = plan[step]["args"][0] === "ME" ? role : teammateRole;
 
-            switch (action) {
-                case 'MOVE_RIGHT':
-                    await actionMove(actor, 'right');
-                    break;
-                case 'MOVE_LEFT':
-                    await actionMove(actor, 'left');
-                    break;
-                case 'MOVE_UP':
-                    await actionMove(actor, 'up');
-                    break;
-                case 'MOVE_DOWN':
-                    await actionMove(actor, 'down');
-                    break;
-                case 'PICK_UP':
-                    let pickedParcels = (await actionPickUp(actor)).length;
-                    this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
-                    break;
-                case 'PUT_DOWN':
-                case 'PUT_DOWN_ON_DELIVERY':
-                    await actionPutDown(actor);
-                    this.parent.carriedParcels = 0;
-                    break;
+            if (plan[step]["args"][0] === "ME"){
+                switch (action) {
+                    case 'MOVE_RIGHT':
+                        await actionMove(role, 'right');
+                        break;
+                    case 'MOVE_LEFT':
+                        await actionMove(role, 'left');
+                        break;
+                    case 'MOVE_UP':
+                        await actionMove(role, 'up');
+                        break;
+                    case 'MOVE_DOWN':
+                        await actionMove(role, 'down');
+                        break;
+                    case 'PICK_UP':
+                        let pickedParcels = (await actionPickUp(role)).length;
+                        this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
+                        break;
+                    case 'PUT_DOWN':
+                    case 'PUT_DOWN_ON_DELIVERY':
+                        await actionPutDown(role);
+                        this.parent.carriedParcels = 0;
+                        break;
+                }
+            } else {
+                let reply = await client.ask( teammateId, { 
+                    operation: "execute_action",
+                    body: action
+                });
+                console.log(reply); // TODO: understand why sometimes it prints false but it works in practice
             }
         }
+
+        if(neededTeammates){
+            var reply = await client.say( teammateId, {
+                operation: "release_availability"
+            });
+        }
+
     }
 }
 

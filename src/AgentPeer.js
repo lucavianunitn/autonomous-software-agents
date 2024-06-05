@@ -2,6 +2,7 @@ import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
 import { Intention } from "./Intention.js";
+import { actionMove, actionPickUp, actionPutDown, actionRandomMove } from "./actions.js";
 import { configMaster as config } from "../config.js";
 
 export class Agent {
@@ -15,6 +16,7 @@ export class Agent {
     #xPos;
     #yPos;
     #score;
+    #stayIdle;
 
     #teammateId
     #teammateRole
@@ -48,6 +50,8 @@ export class Agent {
         this.#agentToken = token;
         this.#role = role;
         this.client = new DeliverooApi(host, token);
+
+        this.#stayIdle = false;
 
         this.#teammateRole = teammateRole;
 
@@ -102,6 +106,12 @@ export class Agent {
 
             }
             else {
+                while(this.#stayIdle === true){
+                    await new Promise(r => setTimeout(r, 500));
+
+                    console.log(this.#role+" must to stay idle in order to follow it's peers indications")
+                }
+
                 let isMapDefined = this.#map !== undefined;
 
                 if (isMapDefined){
@@ -168,6 +178,8 @@ export class Agent {
         let bestScore = 0;
         let bestParcel = null;
         let bestDelivery = null;
+
+        perceivedAgents.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
 
         this.#perceivedParcels.forEach(function(parcel) {
 
@@ -312,7 +324,7 @@ export class Agent {
         /**
          * The event handled by this listener is emitted when every agent is sharing
          */
-        this.client.onMsg( (id, name, msg, reply) => {
+        this.client.onMsg( async (id, name, msg, reply) => {
             if (id !== this.#teammateId) return;
             
             if(this.#onReceivedMsgVerbose){
@@ -341,12 +353,66 @@ export class Agent {
         
                     if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
                     break;
+                case 'ask_availability':
+                    let currentIntention = this.getCurrentIntention();
+
+                    if (currentIntention === undefined){
+                        this.#stayIdle = true
+                        reply(true);
+                        return
+                    }
+
+                    for (const stoppableIntention of msg.body){
+                        if (currentIntention.desire === stoppableIntention){
+                            this.#stayIdle = true
+                            currentIntention.stop();
+                            reply(true);
+
+                            return
+                        }
+                    }
+
+                    reply(false) //the current intention is not stoppable and so I cannot help my teammate
+                    break;
+                case 'release_availability':
+                    this.#stayIdle = false
+                    break;    
                 case 'share_own_position':
                     this.#xPosTeammate = Math.round(msg.body.x);
                     this.#yPosTeammate = Math.round(msg.body.y);
 
-                    console.log("AGENT "+this.#role+" received peers position "+this.#xPosTeammate+" "+this.#yPosTeammate)
+                    // console.log("AGENT "+this.#role+" received peers position "+this.#xPosTeammate+" "+this.#yPosTeammate)
                     break;
+                case 'execute_action':
+                    try {
+                        switch (msg.body) {
+                            case 'MOVE_RIGHT':
+                                await actionMove(this.role, 'right');
+                                break;
+                            case 'MOVE_LEFT':
+                                await actionMove(this.role, 'left');
+                                break;
+                            case 'MOVE_UP':
+                                await actionMove(this.role, 'up');
+                                break;
+                            case 'MOVE_DOWN':
+                                await actionMove(this.role, 'down');
+                                break;
+                            case 'PICK_UP':
+                                let pickedParcels = (await actionPickUp(this.role)).length;
+                                this.#carriedParcels = pickedParcels + this.#carriedParcels;
+                                break;
+                            case 'PUT_DOWN':
+                            case 'PUT_DOWN_ON_DELIVERY':
+                                await actionPutDown(this.role);
+                                this.#carriedParcels = 0;
+                                break;
+                        }
+
+                        reply(true) // the action requested was correctly performed
+                    } catch {
+                        reply(false) // the action requested failed
+                    }
             }
         });
     }
