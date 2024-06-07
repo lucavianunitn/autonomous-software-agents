@@ -32,6 +32,7 @@ export class Agent {
     #perceivedAgents = new Map();
     #carriedReward = 0;
     #carriedParcels = 0;
+    #blacklistedParcels = []
 
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
@@ -124,7 +125,16 @@ export class Agent {
                         this.queue("go_delivery_peers");
                     }
                     else if (parcel !== undefined) {
-                        this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
+                        var reply = await this.client.ask( this.#teammateId, {
+                            operation: "pickup_parcel",
+                            body: parcel
+                        } );
+
+                        if (reply === true){
+                            this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
+                        }else{
+                            this.#blacklistedParcels.push(parcel.id);
+                        }
                     }
                     else {
                         this.queue("random");
@@ -173,35 +183,41 @@ export class Agent {
         let agentX = this.#xPos;
         let agentY = this.#yPos;
         let map = this.#map;
+
         let perceivedAgents = this.#perceivedAgents;
+        let perceivedAgentsNoTeammate = this.#perceivedAgents;
+        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
+
         let areParcelExpiring = this.#areParcelExpiring
+        let blacklistedParcels = this.#blacklistedParcels
+
         let bestScore = 0;
         let bestParcel = null;
         let bestDelivery = null;
 
-        perceivedAgents.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
 
         this.#perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
 
-            let parcelReward = parcel.reward;
-            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
-            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
+            if (blacklistedParcels.includes(parcelId) === false) {
+                let parcelReward = parcel.reward;
+                let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
+                let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgentsNoTeammate);
 
-            let parcelScore = 0;
-            if (areParcelExpiring){
-                parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
-            }else{
-                parcelScore = parcelReward
+                let parcelScore = 0;
+                if (areParcelExpiring){
+                    parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
+                }else{
+                    parcelScore = parcelReward
+                }
+                
+                if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
+                    bestScore = parcelScore;
+                    bestParcel = parcelId;
+                    bestDelivery = coords;
+                }
             }
-            
-            if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
-                bestScore = parcelScore;
-                bestParcel = parcelId;
-                bestDelivery = coords;
-            }
-
         })
 
         return [bestScore, bestParcel, bestDelivery];
@@ -295,6 +311,7 @@ export class Agent {
                 } );
             }
 
+            console.log(this.#role+" BLACKLIST "+this.#blacklistedParcels)
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         })
@@ -353,6 +370,35 @@ export class Agent {
         
                     if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
                     break;
+                case 'pickup_parcel':
+                    let xParcel = msg.body.x;
+                    let yParcel = msg.body.y;
+                    let idParcel = msg.body.id;
+                    let map = this.#map;
+                    let perceivedAgents = this.#perceivedAgents;
+
+                    let xPos = this.#xPos;
+                    let yPos = this.#yPos;
+                    let xPosTeammate = this.#xPosTeammate;
+                    let yPosTeammate = this.#xPosTeammate;
+
+                    if(this.getCurrentIntention() !== "random"){
+                        reply(true); // I give my teammate the possibility to pick it up
+                        this.#blacklistedParcels.push(msg.body.id);
+                    }else{
+                        let distanceMeParcel = map.pathBetweenTiles([xPos,yPos], [xParcel,yParcel], perceivedAgents)[0]
+                        let distanceTeammateParcel = map.pathBetweenTiles([xPosTeammate,yPosTeammate], [xParcel,yParcel], perceivedAgents)[0]
+
+                        if((distanceMeParcel > distanceTeammateParcel && distanceTeammateParcel > -1) || this.#blacklistedParcels.includes(idParcel)){
+                            reply(true); //the teammate is nearer and so I let him pickup
+                            this.#blacklistedParcels.push(msg.body.id);
+                        } else {
+                            reply(false); //the teammate is more distant and so I will pickup
+                        }
+                    }
+
+
+                    break;    
                 case 'ask_availability':
                     let currentIntention = this.getCurrentIntention();
 
