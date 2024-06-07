@@ -5,31 +5,17 @@ export const configSingle = {
 
 }
 
-export const configMaster = {
-
-    host: process.env.HOST,
-    token: process.env.TOKEN_MASTER
-
-}
-
-export const configSlave = {
-
-    host: process.env.HOST,
-    token: process.env.TOKEN_SLAVE
-
-}
-
 export const configAgent1 = {
 
     host: process.env.HOST,
-    token: process.env.TOKEN_MASTER
+    token: process.env.TOKEN_AGENT1
 
 }
 
 export const configAgent2 = {
 
     host: process.env.HOST,
-    token: process.env.TOKEN_SLAVE
+    token: process.env.TOKEN_AGENT2
 
 }
 // console.log(process.env.HOST);

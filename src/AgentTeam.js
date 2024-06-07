@@ -1,13 +1,37 @@
 import { Agent } from "./Agent.js";
 
-export class AgentSingle extends Agent {
+export class AgentTeam extends Agent {
 
-    constructor(role, host, token) {
+    #stayIdle;
+
+    #teammateId;
+    get teammateId() { return this.#teammateId; }
+    set teammateId(id) { this.#teammateId = id; }
+
+    #teammateRole;
+    get teammateRole() { return this.#teammateRole; }
+    set teammateRole(role) { this.#teammateRole = role; }
+
+    #teammatePosition;
+    get teammatePosition() { return this.#teammatePosition; }
+    set teammatePosition(pos) { this.#teammatePosition = pos; }
+
+    // Debug Flags
+    #onReceivedMsgVerbose = process.env.ON_RECEIVED_MSG_VERBOSE === "true"
+    
+    // Other flags
+    #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
+
+    constructor(role, host, token, teammateRole) {
 
         super(role, host, token);
 
+        this.#stayIdle = false;
+        this.#teammateRole = teammateRole;
+
     }
 
+    // TODO: insert modifications for teamwork communication
     async intentionLoop ( ) {
 
         this.eventEmitter.on("found free parcels", () => {
@@ -65,6 +89,7 @@ export class AgentSingle extends Agent {
 
     /**
      * TODO: improve this method
+     * TODO: insert modifications for teamwork communication
      * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
      * - the parcel value (higher is better)
      * - the parcel distance to the agent (lower is better)
@@ -86,7 +111,7 @@ export class AgentSingle extends Agent {
             let parcelId = parcel.id;
 
             let parcelReward = parcel.reward;
-            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x, parcel.y], perceivedAgents);
+            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x,parcel.y], perceivedAgents);
             let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
 
             let parcelScore = 0;
