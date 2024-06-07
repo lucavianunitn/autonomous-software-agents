@@ -2,7 +2,7 @@ import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
 import { Intention } from "./Intention.js";
-import { default as config } from "./../config.js";
+import { configMaster as config } from "../config.js";
 
 export const client = new DeliverooApi(config.host, config.token);
 
@@ -10,11 +10,14 @@ export class Agent {
 
     // Agent info
     #agentToken
+    #role = "master"
     #id;
     #name;
     #xPos;
     #yPos;
     #score;
+
+    #teammateId
 
     #map;
 
@@ -31,10 +34,10 @@ export class Agent {
     #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
     #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
+    #onReceivedMsgVerbose = process.env.ON_RECEIVED_MSG_VERBOSE === "true"
     #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
     #strategyChosenVerbose = process.env.STRATEGY_CHOSEN_VERBOSE === "true"
     #errorMessagesVerbose = process.env.ERROR_MESSAGES_VERBOSE === "true"
-
     // Other flags
     #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
@@ -44,8 +47,11 @@ export class Agent {
         this.setupClient();
     }
 
+    get id() { return this.#id; }
+    get teammateId() { return this.#teammateId; }
     get xPos() { return this.#xPos; }
     get yPos() { return this.#yPos; }
+    get role() { return this.#role; }
     get map() { return this.#map; }
     get eventEmitter() { return this.#eventEmitter; }
     get perceivedParcels() { return this.#perceivedParcels; }
@@ -53,6 +59,7 @@ export class Agent {
     get carriedParcels() {return this.#carriedParcels}
 
     set carriedParcels(carriedParcels) {this.#carriedParcels = carriedParcels}
+    set teammateId(teammateId) {this.#teammateId = teammateId}
 
     async intentionLoop ( ) {
 
@@ -85,7 +92,6 @@ export class Agent {
 
             }
             else {
-
                 let isMapDefined = this.#map !== undefined;
 
                 if (isMapDefined){
@@ -253,8 +259,15 @@ export class Agent {
             notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
 
             if (notTakenParcels)
-                this.#eventEmitter.emit("found free parcels");
+                this.#eventEmitter.emit("found free parcels"); // intention revision is performed
             
+            if (perceivedParcels.length !== 0){
+                await client.say( this.#teammateId, { // share parcels sensed with teammate
+                    operation: "share_parcels",
+                    body: perceivedParcels
+                } );
+            }
+
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         })
@@ -270,9 +283,51 @@ export class Agent {
             for (const agent of perceivedAgents)
                 this.#perceivedAgents.set(agent.id, agent);
             
-                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+            if (perceivedAgents.length !== 0){
+                await client.say( this.#teammateId, { // share agents sensed with teammate
+                    operation: "share_agents",
+                    body: perceivedAgents
+                } );
+            }
+
+            if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         })
+
+        /**
+         * The event handled by this listener is emitted when every agent is sharing
+         */
+        client.onMsg( (id, name, msg, reply) => {
+            if (id !== this.#teammateId) return;
+            
+            if(this.#onReceivedMsgVerbose){
+                console.log(`${this.#role}: received ${msg.operation} message with body`);
+                console.log(msg.body);    
+            }
+
+            switch (msg.operation) {
+                case 'share_parcels':
+                    let notTakenParcels = false;
+
+                    for (const parcel of msg.body) {
+                        this.#perceivedParcels.set(parcel.id, parcel);
+                    }
+
+                    // Check if at least one parcel is not taken
+                    notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
+
+                    if (notTakenParcels)
+                        this.#eventEmitter.emit("found free parcels"); // intention revision is performed
+
+                    break;
+                case 'share_agents':
+                    for (const agent of msg.body)
+                        if(agent.id !== this.#id) this.#perceivedAgents.set(agent.id, agent);
+        
+                    if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+                    break;
+            }
+        });
     }
 
     printDebug() {
