@@ -5,5 +5,5 @@
 import { configSingle } from "./config.js";
 import { AgentSingle } from "./src/AgentSingle.js";
 
-const agent = new AgentSingle("single", configSingle.host, configSingle.token);
+const agent = new AgentSingle(configSingle.host, configSingle.token);
 agent.intentionLoop();

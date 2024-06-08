@@ -2,9 +2,9 @@ import { Agent } from "./Agent.js";
 
 export class AgentSingle extends Agent {
 
-    constructor(role, host, token) {
+    constructor(host, token) {
 
-        super(role, host, token);
+        super(host, token);
 
     }
 

@@ -8,10 +8,6 @@ export class AgentTeam extends Agent {
     get teammateId() { return this.#teammateId; }
     set teammateId(id) { this.#teammateId = id; }
 
-    #teammateRole;
-    get teammateRole() { return this.#teammateRole; }
-    set teammateRole(role) { this.#teammateRole = role; }
-
     #teammatePosition;
     get teammatePosition() { return this.#teammatePosition; }
     set teammatePosition(pos) { this.#teammatePosition = pos; }
@@ -22,12 +18,12 @@ export class AgentTeam extends Agent {
     // Other flags
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(role, host, token, teammateRole) {
+    constructor(host, token) {
 
-        super(role, host, token);
+        super(host, token);
 
+        this.onCommunication();
         this.#stayIdle = false;
-        this.#teammateRole = teammateRole;
 
     }
 
@@ -68,12 +64,21 @@ export class AgentTeam extends Agent {
                     let parcel = this.perceivedParcels.get(bestParcelId);
 
                     if (this.carriedParcels > 0){
-                        this.addIntention("go_delivery");
+                        let teammateAvailability = await this.askAvailability();
+
+                        if (teammateAvailability){
+                            await this.askCoordinates();
+                            this.addIntention("go_delivery_team");
+                        }else{
+                            this.addIntention("go_delivery");
+                        }
                     }
                     else if (parcel !== undefined) {
+                        this.askCoordinates();
                         this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
                     }
                     else {
+                        // chiede presenza pacchetti
                         this.addIntention("random");
                     }
                 }
@@ -104,6 +109,9 @@ export class AgentTeam extends Agent {
         const map = this.map;
         const position = this.position;
         const perceivedAgents = this.perceivedAgents;
+        let perceivedAgentsNoTeammate = perceivedAgents;
+        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
+
         const areParcelExpiring = this.areParcelExpiring;
 
         this.perceivedParcels.forEach(function(parcel) {
@@ -112,7 +120,7 @@ export class AgentTeam extends Agent {
 
             let parcelReward = parcel.reward;
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x,parcel.y], perceivedAgents);
-            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
+            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgentsNoTeammate);
 
             let parcelScore = 0;
             if (areParcelExpiring){
@@ -133,4 +141,43 @@ export class AgentTeam extends Agent {
 
     }
 
+    async askCoordinates(){
+        var reply = await this.client.ask( this.teammateId, {
+            operation: "ask_teammate_coordinates",
+        } );
+
+        this.teammatePosition = reply;
+        console.log("teammate position")
+        console.log(this.teammatePosition)
+    }
+
+    async askAvailability(){
+        var reply = await this.client.ask( this.teammateId, {
+            operation: "ask_teammate_availability",
+        } );
+
+        return reply;
+    }
+
+    onCommunication(){
+        const agent = this;
+
+        this.client.onMsg( async (id, name, msg, reply) => {
+            if (id !== agent.#teammateId) return;
+
+            switch(msg.operation){
+                case "ask_teammate_coordinates":
+                    reply({x: Math.round(this.position.x), y: Math.round(this.position.y)});
+                    break;
+                case "ask_teammate_availability":
+                    const intention = this.getCurrentIntention();
+                    if(intention.desire === "random")
+                        reply(true);
+                    else
+                        reply(false);
+                    break;
+            }
+    
+        })
+    }
 }

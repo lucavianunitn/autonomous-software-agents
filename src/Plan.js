@@ -284,10 +284,11 @@ export class GoDeliveryTeam extends Plan {
         let client = this.parent.client;
         let agentX = this.parent.position.x;
         let agentY = this.parent.position.y;
+        
         let teammateId = this.parent.teammateId;
         let teammateX = this.parent.teammatePosition.x;
         let teammateY = this.parent.teammatePosition.y;
-        let teammateRole = this.parent.teammateRole;
+
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -343,7 +344,7 @@ export class GoDeliveryTeam extends Plan {
         }
 
         if(neededTeammates){
-            // console.log(role+" NEED TEAMMATE");
+
             if(neededTeammatesForDelivery){
                 // console.log("... ALSO FOR DELIVERY")
 

@@ -5,10 +5,10 @@
 import { configAgent1, configAgent2 } from "./config.js";
 import { AgentTeam } from "./src/AgentTeam.js";
 
-const agent_1 = new AgentTeam("agent_1", configAgent1.host, configAgent1.token, "agent_2");
+const agent_1 = new AgentTeam(configAgent1.host, configAgent1.token);
 agent_1.intentionLoop();
 
-const agent_2 = new AgentTeam("agent_2", configAgent2.host, configAgent2.token, "agent_1");
+const agent_2 = new AgentTeam(configAgent2.host, configAgent2.token);
 agent_2.intentionLoop();
 
 while(agent_1.id === undefined){

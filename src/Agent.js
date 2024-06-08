@@ -15,10 +15,6 @@ export class Agent {
     #id;
     get id() { return this.#id; }
     set id(id) { this.#id = id; }
-    
-    #role;
-    get role() { return this.#role; }
-    set role(role) { this.#role = role; }
 
     #name;
     get name() { return this.#name; }
@@ -68,9 +64,8 @@ export class Agent {
     // Other flags
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
-    constructor(role, host, token) {
+    constructor(host, token) {
         this.#agentToken = token;
-        this.#role = role;
         this.#client = new DeliverooApi(host, token);
 
         this.setupClient();
