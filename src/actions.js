@@ -1,40 +1,13 @@
-import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
+export async function actionMove(client, direction) {
 
-function getClient(agentType){
-    let host = process.env.HOST;
-    let token
-
-    switch (agentType) {
-        case 'single':
-            token =  process.env.TOKEN_SINGLE;
-            break;
-        case 'master':
-            token =  process.env.TOKEN_MASTER;
-            break;
-        case 'slave':
-            token =  process.env.TOKEN_SLAVE;
-            break;
-        case 'agent_1':
-            token =  process.env.TOKEN_AGENT1;
-            break;
-        case 'agent_2':
-            token =  process.env.TOKEN_AGENT2;
-            break;    
-    }
-
-    return new DeliverooApi(host, token);
-}
-
-export async function actionMove(agentType, direction) {
-
-    let result = await getClient(agentType).move(direction);
+    let result = await client.move(direction);
 
     if (!result)
         throw {message: "Unable to move"};
 
 }
 
-export async function actionRandomMove(agentType, prevMove='right') {
+export async function actionRandomMove(client, prevMove='right') {
 
     const possibleMovements = { up: 'down', right: 'left', down: 'up', left: 'right' };
 
@@ -54,7 +27,7 @@ export async function actionRandomMove(agentType, prevMove='right') {
 
         if (!tried.includes(direction)) {
 
-            if (await getClient(agentType).move(direction)) {
+            if (await client.move(direction)) {
                 prevMove = direction;
                 break;
             }
@@ -72,14 +45,14 @@ export async function actionRandomMove(agentType, prevMove='right') {
 
 }
 
-export async function actionPickUp(agentType) {
+export async function actionPickUp(client) {
 
-    const pickUpResult = await getClient(agentType).pickup();
+    const pickUpResult = await client.pickup();
     return pickUpResult;
 }
 
-export async function actionPutDown(agentType) {
+export async function actionPutDown(client) {
 
-    const putDownResult = await getClient(agentType).putdown();
+    const putDownResult = await client.putdown();
 
 }

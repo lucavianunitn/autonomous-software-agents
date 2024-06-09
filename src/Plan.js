@@ -4,26 +4,24 @@ import fs from 'fs';
 
 class Plan {
 
-    /**
-     * #parent refers to caller
-     */
-    #parent;
+    #parent; // parent refers to caller
+    get parent() { return this.#parent; }
 
-    // This is used to stop the plan
-    #stopped = false;
+    #stopped = false; // This is used to stop the plan
+    get stopped() { return this.#stopped; }
 
     constructor ( parent ) {
-        this.#parent = parent;
-    }
 
-    get parent() { return this.#parent; }
-    get stopped() { return this.#stopped; }
+        this.#parent = parent;
+
+    }
 
     stop () {
         this.#stopped = true;
     }
 
     considerNearAgents(beliefset, agentX, agentY, perceivedAgents){
+
         perceivedAgents.forEach((agentObstacle) => {
             if(Math.abs(agentObstacle.x-agentX) <= 1 || Math.abs(agentObstacle.y-agentY) <= 1){
                 beliefset.declare('blocked tile_'+agentObstacle.x+'_'+agentObstacle.y); 
@@ -31,6 +29,7 @@ class Plan {
             }
         })
         return beliefset;
+
     }
 }
 
@@ -42,9 +41,9 @@ export class ReachRandomDelivery extends Plan {
 
     async execute () {
 
-        let agentX = this.parent.xPos;
-        let agentY = this.parent.yPos;
-        let role = this.parent.role;
+        let agentX = this.parent.position.x;
+        let agentY = this.parent.position.y;
+        let client = this.parent.client;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -86,16 +85,16 @@ export class ReachRandomDelivery extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove(role, 'right');
+                    await actionMove(client, 'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove(role, 'left');
+                    await actionMove(client, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove(role, 'up');
+                    await actionMove(client, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove(role, 'down');
+                    await actionMove(client, 'down');
                     break;
             }
         }       
@@ -111,13 +110,16 @@ export class RandomWalk extends Plan {
 
     async execute () {
 
-        let role = this.parent.role;
+        let client = this.parent.client;
 
         let prevMove = 'right';
 
         for (let i=0; i<10; i++) {
 
-            prevMove = await actionRandomMove(role, prevMove);
+            if (this.stopped)
+                throw {message: `Stopped Plan RandomWalk`};
+
+            prevMove = await actionRandomMove(client, prevMove);
 
         }
 
@@ -133,9 +135,9 @@ export class GoPickUp extends Plan {
 
     async execute (parcelX, parcelY, parcelId) {
 
-        let agentX = this.parent.xPos;
-        let agentY = this.parent.yPos;
-        let role = this.parent.role;
+        let agentX = this.parent.position.x;
+        let agentY = this.parent.position.y;
+        let client = this.parent.client;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -178,19 +180,19 @@ export class GoPickUp extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove(role,'right');
+                    await actionMove(client,'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove(role, 'left');
+                    await actionMove(client, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove(role, 'up');
+                    await actionMove(client, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove(role, 'down');
+                    await actionMove(client, 'down');
                     break;
                 case 'PICK_UP':
-                    let pickedParcels = (await actionPickUp(role)).length;
+                    let pickedParcels = (await actionPickUp(client)).length;
                     this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                     break;
             }
@@ -207,9 +209,9 @@ export class GoDelivery extends Plan {
 
     async execute () {
 
-        let agentX = this.parent.xPos;
-        let agentY = this.parent.yPos;
-        let role = this.parent.role;
+        let agentX = this.parent.position.x;
+        let agentY = this.parent.position.y;
+        let client = this.parent.client;
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
@@ -251,19 +253,19 @@ export class GoDelivery extends Plan {
 
             switch (action) {
                 case 'MOVE_RIGHT':
-                    await actionMove(role, 'right');
+                    await actionMove(client, 'right');
                     break;
                 case 'MOVE_LEFT':
-                    await actionMove(role, 'left');
+                    await actionMove(client, 'left');
                     break;
                 case 'MOVE_UP':
-                    await actionMove(role, 'up');
+                    await actionMove(client, 'up');
                     break;
                 case 'MOVE_DOWN':
-                    await actionMove(role, 'down');
+                    await actionMove(client, 'down');
                     break;
                 case 'PUT_DOWN_ON_DELIVERY':
-                    await actionPutDown(role);
+                    await actionPutDown(client);
                     this.parent.carriedParcels = 0;
                     break;
             }
@@ -271,26 +273,27 @@ export class GoDelivery extends Plan {
     }
 }
 
-export class GoDeliveryPeers extends Plan {
+export class GoDeliveryTeam extends Plan {
 
     static isApplicableTo ( desire ) {
-        return desire == 'go_delivery_peers';
+        return desire == 'go_delivery_team';
     }
 
     async execute () {
 
         let client = this.parent.client;
-        let agentX = this.parent.xPos;
-        let agentY = this.parent.yPos;
+        let agentX = this.parent.position.x;
+        let agentY = this.parent.position.y;
+        
         let teammateId = this.parent.teammateId;
-        let teammateX = this.parent.xPosTeammate;
-        let teammateY = this.parent.yPosTeammate;
-        let role = this.parent.role;
-        let teammateRole = this.parent.teammateRole;
+        let teammateX = this.parent.teammatePosition.x;
+        let teammateY = this.parent.teammatePosition.y;
+
         let map = this.parent.map;
         let perceivedAgents = this.parent.perceivedAgents;
 
-        if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false)
+        if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false ||
+            Number.isInteger(teammateX) === false || Number.isInteger(teammateY) === false)
             throw {message: "Invalid parameters"};
 
         let beliefset = map.returnAsBeliefset()
@@ -304,7 +307,6 @@ export class GoDeliveryPeers extends Plan {
         beliefset.declare(`me tm`);
         beliefset.declare(`at tm tile_${teammateX}_${teammateY}`);
         beliefset.declare(`blocked tile_${teammateX}_${teammateY}`);
-
 
         beliefset.declare(`parcel p`);
         beliefset.declare(`carry me p`);
@@ -325,74 +327,34 @@ export class GoDeliveryPeers extends Plan {
         var plan = await onlineSolver( domain, problem );
         // console.log( plan );
 
-        var neededTeammates = false;
-        var neededTeammatesForDelivery = false;
-
-        for (const step in plan){
-            if (plan[step]["args"][0] !== "ME"){
-                neededTeammates = true;
-                
-                if(plan[step].action === "PUT_DOWN_ON_DELIVERY"){
-                    neededTeammatesForDelivery = true;
-                    break;
-                }
-                
-            }
-        }
-
-        if(neededTeammates){
-            // console.log(role+" NEED TEAMMATE");
-            if(neededTeammatesForDelivery){
-                // console.log("... ALSO FOR DELIVERY")
-
-                var reply = await client.ask( teammateId, { //seems to make sense that the availability is given by the peer when the latter is random or is delivering if it's required help in deliverying
-                    operation: "ask_availability",
-                    body: ["random", "go_delivery_peers"]
-                });
-
-            } else {
-                var reply = await client.ask( teammateId, { //if instead the help is not needed for deliverying, the peer is involved only if it is moving random
-                    operation: "ask_availability",
-                    body: ["random"]
-                });
-            }
-
-            if (reply !== true){
-                console.log("It's impossible to deliver");
-                return;
-            } else {
-                console.log("My teammate can help me to deliver");
-            }
-        }
-
         for (const step in plan){
 
             if (this.stopped)
-                throw {message: `Stopped Plan GoDeliveryPeers`};
+                throw {message: `Stopped Plan GoDeliveryTeam`};
 
             const action = plan[step].action;
 
             if (plan[step]["args"][0] === "ME"){
                 switch (action) {
                     case 'MOVE_RIGHT':
-                        await actionMove(role, 'right');
+                        await actionMove(client, 'right');
                         break;
                     case 'MOVE_LEFT':
-                        await actionMove(role, 'left');
+                        await actionMove(client, 'left');
                         break;
                     case 'MOVE_UP':
-                        await actionMove(role, 'up');
+                        await actionMove(client, 'up');
                         break;
                     case 'MOVE_DOWN':
-                        await actionMove(role, 'down');
+                        await actionMove(client, 'down');
                         break;
                     case 'PICK_UP':
-                        let pickedParcels = (await actionPickUp(role)).length;
+                        let pickedParcels = (await actionPickUp(client)).length;
                         this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                         break;
                     case 'PUT_DOWN':
                     case 'PUT_DOWN_ON_DELIVERY':
-                        await actionPutDown(role);
+                        await actionPutDown(client);
                         this.parent.carriedParcels = 0;
                         break;
                 }
@@ -405,11 +367,9 @@ export class GoDeliveryPeers extends Plan {
             }
         }
 
-        if(neededTeammates){
-            var reply = await client.say( teammateId, {
-                operation: "release_availability"
-            });
-        }
+        client.say( teammateId, {
+            operation: "release_availability"
+        });
 
     }
 }
@@ -428,4 +388,4 @@ planLibrary.push( ReachRandomDelivery );
 planLibrary.push( RandomWalk );
 planLibrary.push( GoPickUp );
 planLibrary.push( GoDelivery );
-planLibrary.push( GoDeliveryPeers );
+planLibrary.push( GoDeliveryTeam );

@@ -3,19 +3,26 @@ import { Beliefset } from "@unitn-asa/pddl-client";
 export class TileMap {
 
     #width;
+    get width() { return this.#width; }
+    set width(width) { this.#width = width; }
+ 
     #height;
+    get height() { return this.#height; }
+    set height(height) { this.#height = height; }
 
     #tiles = [];
+    get tiles() { return this.#tiles; }
 
     #deliveryTiles = [];
+    get deliveryTiles() { return this.#deliveryTiles; }
 
     constructor(width, height, tiles) {
+
         this.#width = width;
         this.#height = height;
 
-        for(let x=0; x<width; x++) {
-            this.#tiles[x] = new Array(height).fill("empty");
-        }
+        for(let x=0; x<width; x++)
+            this.tiles[x] = new Array(height).fill("empty");
 
         tiles.forEach( tile => {
 
@@ -28,19 +35,17 @@ export class TileMap {
              */
             let parcelSpawner = tile["parcelSpawner"];
 
-            this.#tiles[x][y] = delivery ? "delivery" : "parcelSpawner";
+            this.tiles[x][y] = delivery ? "delivery" : "parcelSpawner";
             
             if (delivery)
-                this.#deliveryTiles.push({x:x,y:y});
+                this.deliveryTiles.push({x:x,y:y});
         });
 
     }
 
     getRandomDelivery() {
 
-        let deliveryTiles = this.#deliveryTiles;
-
-        return deliveryTiles[Math.floor(Math.random()*deliveryTiles.length)];
+        return this.deliveryTiles[Math.floor(Math.random()*this.deliveryTiles.length)];
 
     }
 
@@ -56,12 +61,13 @@ export class TileMap {
      * - is -1: there does not exist a path
      */
     pathBetweenTiles(start, end, agentsPerceived) {
-        start = start.map(function(coordinate){ // to avoid that start contains partial positions
+
+        start = Object.values(start).map(function(coordinate){ // to avoid that start contains partial positions
             return Math.round(coordinate);
         });
    
-        const cols = this.#width;
-        const rows = this.#height;
+        const cols = this.width;
+        const rows = this.height;
     
         const queue = [start];
         const visited = new Set(); // Mark visited cells
@@ -109,7 +115,7 @@ export class TileMap {
     
                 const newCell = `${newCol},${newRow}`;
                 if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows 
-                    && (this.#tiles[newCol][newRow]=="parcelSpawner" || this.#tiles[newCol][newRow]=="delivery") 
+                    && (this.tiles[newCol][newRow]=="parcelSpawner" || this.tiles[newCol][newRow]=="delivery") 
                     && !agentsMap[newCol][newRow]
                     && !visited.has(newCell)) {
 
@@ -128,16 +134,14 @@ export class TileMap {
      * By iterating on the single agents, it creates a height x length map with true where an agent is perceived
      */
     createAgentsMap(agentsPerceived) {
+
         let agentsMap = [];
 
-        const width = this.#width;
-        const height = this.#height;
-
-        for(let x=0; x<width; x++) {
-            agentsMap[x] = new Array(height).fill(false);
-        }
+        for(let x = 0; x < this.width; x++)
+            agentsMap[x] = new Array(this.height).fill(false);
 
         for (let [key, value] of agentsPerceived) {
+
             const x = Math.round(value.x);
             const y = Math.round(value.y);
 
@@ -145,10 +149,7 @@ export class TileMap {
         }
 
         return agentsMap;
-    }
 
-    getDeliveryTiles() {
-        return this.#deliveryTiles;
     }
 
     /**
@@ -159,7 +160,7 @@ export class TileMap {
         let minDistance = Infinity;
         let coords = null;
 
-        for (const deliveryTile of this.#deliveryTiles) {
+        for (const deliveryTile of this.deliveryTiles) {
 
             let [distance, path, distances] = this.pathBetweenTiles([x,y], [deliveryTile.x, deliveryTile.y], agentsPerceived);
 
@@ -180,20 +181,16 @@ export class TileMap {
      */
     getCenteredTile(returnDeliveryCell = false) {
 
-        let width = this.#width;
-        let height = this.#height;
-        let tiles = this.#tiles;
+        let xCenter = Math.ceil(this.width/2) - 1;
+        let yCenter = Math.ceil(this.height/2) - 1;
 
-        let xCenter = Math.ceil(width/2) - 1;
-        let yCenter = Math.ceil(height/2) - 1;
-
-        if (tiles[xCenter][yCenter] === "parcelSpawner" || tiles[xCenter][yCenter] === "delivery")
+        if (this.tiles[xCenter][yCenter] === "parcelSpawner" || this.tiles[xCenter][yCenter] === "delivery")
             return {x:xCenter,y:yCenter};
 
         let visited = [];
-        for (let x = 0; x < width; x++ ){
+        for (let x = 0; x < this.width; x++ ){
             visited[x] = [];
-            for (let y = 0; y < height; y++){
+            for (let y = 0; y < this.height; y++){
                 visited[x][y] = false;
             }
         }
@@ -222,10 +219,10 @@ export class TileMap {
                 if (this.#isValidBFS(visited, adjx, adjy)) {
 
                     if (returnDeliveryCell){
-                        if (tiles[adjx][adjy] === "delivery")
+                        if (this.tiles[adjx][adjy] === "delivery")
                             return {x:adjx,y:adjy};    
                     }else{
-                        if (tiles[adjx][adjy] === "parcelSpawner" || tiles[adjx][adjy] === "delivery")
+                        if (this.tiles[adjx][adjy] === "parcelSpawner" || this.tiles[adjx][adjy] === "delivery")
                             return {x:adjx,y:adjy};    
                     }
 
@@ -240,7 +237,7 @@ export class TileMap {
 
     #isValidBFS(vis, row, col){
 
-        if (row < 0 || col < 0 || row >= this.#width || col >= this.#height)
+        if (row < 0 || col < 0 || row >= this.width || col >= this.height)
             return false;
      
         if (vis[row][col])
@@ -252,14 +249,14 @@ export class TileMap {
     printDebug() {
 
         console.log("TileMap {");
-        console.log(`- width = ${this.#width}`);
-        console.log(`- heigth = ${this.#height}`);
+        console.log(`- width = ${this.width}`);
+        console.log(`- heigth = ${this.height}`);
 
-        for (let x = 0; x < this.#width; x++) {
+        for (let x = 0; x < this.width; x++) {
 
-            for (let y = 0; y < this.#height; y++) {
+            for (let y = 0; y < this.height; y++) {
 
-                console.log(`- tiles[${x}][${y}] = ${this.#tiles[x][y]}`);
+                console.log(`- tiles[${x}][${y}] = ${this.tiles[x][y]}`);
 
             }
 
@@ -275,12 +272,12 @@ export class TileMap {
         const tileBeliefset = new Beliefset();
 
         // Declare tile type
-        for (let x = 0; x < this.#width; x++) {
-            for (let y = 0; y < this.#height; y++) {
-                if( this.#tiles[x][y] !== "empty" ){
+        for (let x = 0; x < this.width; x++) {
+            for (let y = 0; y < this.height; y++) {
+                if( this.tiles[x][y] !== "empty" ){
                     tileBeliefset.declare('tile tile_'+x+'_'+y);
 
-                    if( this.#tiles[x][y] === "delivery" ){
+                    if( this.tiles[x][y] === "delivery" ){
                         tileBeliefset.declare('delivery tile_'+x+'_'+y);
                     }
                 }
@@ -288,19 +285,19 @@ export class TileMap {
         }
 
         // Declare tile type
-        for (let x = 0; x < this.#width; x++) { // changed the for range
-            for (let y = 0; y < this.#height; y++) {
-                if( this.#tiles[x][y] !== "empty" ){
-                    if (x-1 >= 0 && this.#tiles[x-1][y] !== "empty"){
+        for (let x = 0; x < this.width; x++) { // changed the for range
+            for (let y = 0; y < this.height; y++) {
+                if( this.tiles[x][y] !== "empty" ){
+                    if (x-1 >= 0 && this.tiles[x-1][y] !== "empty"){
                         tileBeliefset.declare('left tile_'+x+'_'+y+' tile_'+(x-1)+'_'+y);
                     }
-                    if (x+1 < this.#width && this.#tiles[x+1][y] !== "empty"){
+                    if (x+1 < this.width && this.tiles[x+1][y] !== "empty"){
                         tileBeliefset.declare('right tile_'+x+'_'+y+' tile_'+(x+1)+'_'+y);
                     }
-                    if (y-1 >= 0 && this.#tiles[x][y-1] !== "empty"){
+                    if (y-1 >= 0 && this.tiles[x][y-1] !== "empty"){
                         tileBeliefset.declare('down tile_'+x+'_'+y+' tile_'+x+'_'+(y-1));
                     }
-                    if (y+1 < this.#height && this.#tiles[x][y+1] !== "empty"){
+                    if (y+1 < this.height && this.tiles[x][y+1] !== "empty"){
                         tileBeliefset.declare('up tile_'+x+'_'+y+' tile_'+x+'_'+(y+1));
                     }
                 }
