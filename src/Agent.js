@@ -86,6 +86,13 @@ export class Agent {
 
     }
 
+    async stop ( ) {
+
+        for (const intention of this.intentionQueue)
+            intention.stop();
+
+    }
+
     async intentionLoop ( ) {
 
         throw new Error('You have to implement the async method intentionLoop!');

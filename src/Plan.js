@@ -308,7 +308,6 @@ export class GoDeliveryTeam extends Plan {
         beliefset.declare(`at tm tile_${teammateX}_${teammateY}`);
         beliefset.declare(`blocked tile_${teammateX}_${teammateY}`);
 
-
         beliefset.declare(`parcel p`);
         beliefset.declare(`carry me p`);
         beliefset.declare(`to_deliver`);
@@ -328,50 +327,10 @@ export class GoDeliveryTeam extends Plan {
         var plan = await onlineSolver( domain, problem );
         // console.log( plan );
 
-        var neededTeammates = false;
-        var neededTeammatesForDelivery = false;
-
-        for (const step in plan){
-            if (plan[step]["args"][0] !== "ME"){
-                neededTeammates = true;
-                
-                if(plan[step].action === "PUT_DOWN_ON_DELIVERY"){
-                    neededTeammatesForDelivery = true;
-                    break;
-                }
-                
-            }
-        }
-
-        if(neededTeammates){
-
-            if(neededTeammatesForDelivery){
-                // console.log("... ALSO FOR DELIVERY")
-
-                var reply = await client.ask( teammateId, { //seems to make sense that the availability is given by the peer when the latter is random or is delivering if it's required help in deliverying
-                    operation: "ask_availability",
-                    body: ["random", "go_delivery_peers"]
-                });
-
-            } else {
-                var reply = await client.ask( teammateId, { //if instead the help is not needed for deliverying, the peer is involved only if it is moving random
-                    operation: "ask_availability",
-                    body: ["random"]
-                });
-            }
-
-            if (reply !== true){
-                console.log("It's impossible to deliver");
-                return;
-            } else {
-                console.log("My teammate can help me to deliver");
-            }
-        }
-
         for (const step in plan){
 
             if (this.stopped)
-                throw {message: `Stopped Plan GoDeliveryPeers`};
+                throw {message: `Stopped Plan GoDeliveryTeam`};
 
             const action = plan[step].action;
 
@@ -408,11 +367,9 @@ export class GoDeliveryTeam extends Plan {
             }
         }
 
-        if(neededTeammates){
-            var reply = await client.say( teammateId, {
-                operation: "release_availability"
-            });
-        }
+        client.say( teammateId, {
+            operation: "release_availability"
+        });
 
     }
 }

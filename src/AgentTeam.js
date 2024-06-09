@@ -1,4 +1,5 @@
 import { Agent } from "./Agent.js";
+import { actionMove, actionPickUp, actionPutDown, actionRandomMove } from "./actions.js";
 
 export class AgentTeam extends Agent {
 
@@ -13,7 +14,7 @@ export class AgentTeam extends Agent {
     set teammatePosition(pos) { this.#teammatePosition = pos; }
 
 
-    #teammateDesire;
+    #teammateDesire = "random";
     get teammateDesire() { return this.#teammateDesire; }
     set teammateDesire(desire) { this.#teammateDesire = desire; }
 
@@ -47,6 +48,11 @@ export class AgentTeam extends Agent {
 
         while ( true ) {
 
+            if (this.#stayIdle) {
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+
             // Consumes intention_queue if not empty
             if ( this.intentionQueue.length > 0 ) {
             
@@ -65,13 +71,41 @@ export class AgentTeam extends Agent {
 
                 if (isMapDefined) {
 
-                    let bestParcelId = this.selectParcel()[1];
+                    let [bestScore, bestParcelId, needTeammate] = this.selectParcel();
                     let parcel = this.perceivedParcels.get(bestParcelId);
+
+                    if (needTeammate) {
+
+                        let teammateAvailability = await this.askAvailability();
+
+                        if (teammateAvailability){
+                            await this.askCoordinates();
+                            this.addIntention("go_delivery_team");
+                        }
+
+                    }
 
                     if (this.carriedParcels > 0){
 
-                        await this.askCoordinates();
-                        this.addIntention("go_delivery_team");
+                        let canDeliver;
+                        [canDeliver, needTeammate] = this.evaluateDelivery(this.position.x, this.position.y);
+
+                        if (canDeliver) {
+
+                            if (needTeammate) {
+
+                                let teammateAvailability = await this.askAvailability();
+        
+                                if (teammateAvailability){
+                                    await this.askCoordinates();
+                                    this.addIntention("go_delivery_team");
+                                }
+        
+                            }
+                            else
+                                this.addIntention("go_delivery");
+
+                        }
                      
                     }
                     else if (parcel !== undefined) {
@@ -95,7 +129,10 @@ export class AgentTeam extends Agent {
                         this.addIntention("random");
                     }
 
-                    this.shareDesire(this.getCurrentIntention().desire);
+                    const intention = this.getCurrentIntention();
+                    const desire = intention ? intention.desire : "random";
+
+                    this.shareDesire(desire);
                 }
 
                 // TODO: random move if map is not defined?
@@ -117,47 +154,82 @@ export class AgentTeam extends Agent {
      */
     selectParcel() {
 
-        let bestScore = 0;
-        let bestParcel = null;
-        let bestDelivery = null;
-
         const agent = this;
-
         const map = this.map;
         const position = this.position;
         const perceivedAgents = this.perceivedAgents;
+        const areParcelExpiring = this.areParcelExpiring;
+
         let perceivedAgentsNoTeammate = new Map(perceivedAgents);
         perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
 
-        const areParcelExpiring = this.areParcelExpiring;
+        let bestScore = 0;
+        let bestParcel = null;
+        let needTeammate = false;
 
         this.perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
 
-            if(agent.parcelsBlackList.includes(parcelId) === false){
-                let parcelReward = parcel.reward;
-                let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x,parcel.y], perceivedAgents);
-                let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgentsNoTeammate);
+            if (parcel.carriedBy !== null || agent.parcelsBlackList.includes(parcelId))
+                return; // continue
 
-                let parcelScore = 0;
-                if (areParcelExpiring){
-                    parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
-                }else{
-                    parcelScore = parcelReward
-                }
-                
-                if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
-                    bestScore = parcelScore;
-                    bestParcel = parcelId;
-                    bestDelivery = coords;
-                }
+            let parcelReward = parcel.reward;
 
+            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x, parcel.y], perceivedAgents);
+
+            if (parcelAgentDistance < 0)
+                return; // continue
+
+            let [canDeliver, needTeammateTemp] = agent.evaluateDelivery(parcel.x, parcel.y);
+
+            if (canDeliver === false)
+                return; // continue
+
+            let parcelScore = 0;
+
+            if (areParcelExpiring) {
+                parcelScore = parcelReward - parcelAgentDistance - nearestDeliveryDistance;
+            } else {
+                parcelScore = parcelReward
+            }
+
+            if (parcelScore > bestScore) {
+                bestScore = parcelScore;
+                bestParcel = parcelId;
+                needTeammate = needTeammateTemp;
             }
 
         })
 
-        return [bestScore, bestParcel, bestDelivery];
+        return [bestScore, bestParcel, needTeammate];
+
+    }
+
+    evaluateDelivery(fromX, fromY) {
+
+        const perceivedAgents = this.perceivedAgents;
+
+        let perceivedAgentsNoTeammate = new Map(perceivedAgents);
+        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
+
+        let [nearestDeliveryDistance, coords] = this.map.getNearestDelivery([fromX, fromY], perceivedAgents);
+
+        let canDeliver = true;
+        let needTeammate = false;
+
+        if (nearestDeliveryDistance === Infinity) { // See if it is possible to deliver parcel with the help of teammate.
+
+            [nearestDeliveryDistance, coords] = this.map.getNearestDelivery([fromX, fromY], perceivedAgentsNoTeammate);
+
+            if (nearestDeliveryDistance === Infinity)
+                canDeliver = false;
+            else
+                needTeammate = true;
+
+        }
+
+        return [canDeliver, needTeammate];
 
     }
 
@@ -192,10 +264,19 @@ export class AgentTeam extends Agent {
         } );
     }
 
+    async askAvailability(){
+        var reply = await this.client.ask( this.teammateId, {
+            operation: "ask_teammate_availability",
+        } );
+
+        return reply;
+    }
+
     onCommunication(){
         const agent = this;
+        const client = this.client;
 
-        this.client.onMsg( async (id, name, msg, reply) => {
+        client.onMsg( async (id, name, msg, reply) => {
             if (id !== agent.#teammateId) return;
 
             switch(msg.operation){
@@ -224,12 +305,56 @@ export class AgentTeam extends Agent {
                     break;   
                 case "add_in_tm_blacklist":
                     this.parcelsBlackList.push(msg.body);
-                    break; 
+                    break;
+                case "ask_teammate_availability":
+                    const intention = agent.getCurrentIntention();
+                    if (intention === undefined || intention.desire === "random") {
+                        reply(true);
+                        agent.stop();
+                        agent.#stayIdle = true;
+                    }
+                    else
+                        reply(false);
+                    break;
+                case 'execute_action':
+                    try {
+                        switch (msg.body) {
+                            case 'MOVE_RIGHT':
+                                await actionMove(client, 'right');
+                                break;
+                            case 'MOVE_LEFT':
+                                await actionMove(client, 'left');
+                                break;
+                            case 'MOVE_UP':
+                                await actionMove(client, 'up');
+                                break;
+                            case 'MOVE_DOWN':
+                                await actionMove(client, 'down');
+                                break;
+                            case 'PICK_UP':
+                                let pickedParcels = (await actionPickUp(client)).length;
+                                agent.carriedParcels = pickedParcels + agent.carriedParcels;
+                                break;
+                            case 'PUT_DOWN':
+                            case 'PUT_DOWN_ON_DELIVERY':
+                                await actionPutDown(client);
+                                agent.carriedParcels = 0;
+                                break;
+                        }
+
+                        reply(true) // the action requested was correctly performed
+                    } catch {
+                        reply(false) // the action requested failed
+                    }
+                    break;
+                case 'release_availability':
+                    this.#stayIdle = false
+                    break;  
             }
     
         })
 
-        this.client.onParcelsSensing( async ( perceivedParcels ) => {
+        client.onParcelsSensing( async ( perceivedParcels ) => {
             if (this.teammateDesire === "random" && this.perceivedParcels.size !== 0){
                 this.shareParcels(perceivedParcels);
             }
