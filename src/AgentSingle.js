@@ -6,11 +6,11 @@ export class AgentSingle extends Agent {
 
         super(host, token);
 
-    }
-
-    async intentionLoop ( ) {
-
+        /**
+         * This listener is used to stop executing random intentions when a new free parcel is found.
+         */
         this.eventEmitter.on("found free parcels", () => {
+
             const intention = this.getCurrentIntention();
 
             if (intention === undefined)
@@ -18,20 +18,23 @@ export class AgentSingle extends Agent {
 
             if (intention.desire === "random")
                 intention.stop();
+
         })
+
+    }
+
+    async intentionLoop ( ) {
 
         while ( true ) {
 
-            // Consumes intention_queue if not empty
+            // If there's at least one intention in queue, execute it
             if ( this.intentionQueue.length > 0 ) {
             
                 const intention = this.getCurrentIntention();
 
-                // Start achieving intention
                 await intention.achieve().catch( error => { console.log(error); } );
 
-                // Remove from the queue
-                this.intentionQueue.shift();
+                this.intentionQueue.shift(); // Remove intention from the queue
 
             }
             else {

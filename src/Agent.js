@@ -65,54 +65,14 @@ export class Agent {
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
 
     constructor(host, token) {
+
         this.#agentToken = token;
         this.#client = new DeliverooApi(host, token);
 
-        this.setupClient();
-    }
-
-    async addIntention ( desire, ...predicate ) {
-
-        if ( this.intentionQueue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
-            return;
-
-        const intention = new Intention(this, desire, predicate);
-        this.intentionQueue.push(intention);
-    }
-
-    getCurrentIntention() {
-        
-        return this.intentionQueue[0];
-
-    }
-
-    async stop ( ) {
-
-        for (const intention of this.intentionQueue)
-            intention.stop();
-
-    }
-
-    async intentionLoop ( ) {
-
-        throw new Error('You have to implement the async method intentionLoop!');
-
-    }
-
-    selectParcel() {
-
-        throw new Error('You have to implement the method selectParcel!');
-
-    }
-    
-    /**
-     * Setup of the client.
-     */
-    setupClient() {
+        // Listeners
 
         this.client.onConnect( () => console.log( "socket", this.client.socket.id ) );
         this.client.onDisconnect( () => console.log( "disconnected", this.client.socket.id ) );
-
         /**
          * The event handled by this listener is emitted on agent connection.
          */
@@ -122,8 +82,7 @@ export class Agent {
 
             if(this.#onMapVerbose) this.#map.printDebug();
 
-        })
-
+        });
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * For each movement there are two event: one partial and one final.
@@ -137,8 +96,8 @@ export class Agent {
             this.#score = score;
 
             if(this.#onYouVerbose) this.printDebug();
-        } )
 
+        });
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
@@ -161,8 +120,7 @@ export class Agent {
             
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
-        })
-
+        });
         /**
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
@@ -176,7 +134,60 @@ export class Agent {
             
                 if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
-        })
+        });
+
+    }
+
+    /**
+     * Adds a new intention in the intention queue if it is not already inserted.
+     * @param {*} desire 
+     * @param  {...any} predicate 
+     * @returns 
+     */
+    async addIntention ( desire, ...predicate ) {
+
+        if ( this.intentionQueue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
+            return;
+
+        const intention = new Intention(this, desire, predicate);
+        this.intentionQueue.push(intention);
+    }
+
+    /**
+     * Returns the first intention in the queue.
+     * @returns {(Intention|undefined)}
+     */
+    getCurrentIntention() {
+        
+        return this.intentionQueue[0];
+
+    }
+
+    /**
+     * Stops all the intentions in the intention queue.
+     */
+    async stop ( ) {
+
+        for (const intention of this.intentionQueue)
+            intention.stop();
+
+    }
+
+    /**
+     * Function that must implement the intention loop of the agent.
+     */
+    async intentionLoop ( ) {
+
+        throw new Error('You have to implement the async method intentionLoop!');
+
+    }
+
+    /**
+     * Function that must implement the logic to choose the next parcel to get.
+     */
+    selectParcel() {
+
+        throw new Error('You have to implement the method selectParcel!');
 
     }
 

@@ -16,7 +16,6 @@ while(agent_1.id === undefined){
 
 agent_2.teammateId = agent_1.id;
 
-
 while(agent_2.id === undefined){
     await new Promise(r => setTimeout(r, 500));
 }
@@ -26,5 +25,4 @@ agent_1.teammateId = agent_2.id;
 agent_1.intentionLoop();
 agent_2.intentionLoop();
 
-console.log(`${agent_1.role} ID: ${agent_2.teammateId}, ${agent_2.role} ID: ${agent_1.teammateId}`)
-
+console.log(`${agent_1.name} ID: ${agent_2.teammateId}, ${agent_2.name} ID: ${agent_1.teammateId}`)
