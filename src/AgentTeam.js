@@ -13,7 +13,6 @@ export class AgentTeam extends Agent {
     get teammatePosition() { return this.#teammatePosition; }
     set teammatePosition(pos) { this.#teammatePosition = pos; }
 
-
     #teammateDesire = "random";
     get teammateDesire() { return this.#teammateDesire; }
     set teammateDesire(desire) { this.#teammateDesire = desire; }
@@ -43,6 +42,16 @@ export class AgentTeam extends Agent {
                 return;
 
             if (intention.desire === "random")
+                intention.stop();
+        })
+
+        this.eventEmitter.on("parcel to pickup no more available", () => {
+            const intention = this.getCurrentIntention();
+            
+            if (intention === undefined)
+                return;
+
+            if (intention.desire === "go_pick_up")
                 intention.stop();
         })
 
@@ -115,8 +124,12 @@ export class AgentTeam extends Agent {
                         }else{
                             await this.askCoordinates();
 
-                            if(this.map.pathBetweenTiles(this.position, [parcel.x,parcel.y], this.perceivedAgents)[0] < 
-                            this.map.pathBetweenTiles([this.teammatePosition.x,this.teammatePosition.y], [parcel.x,parcel.y], this.perceivedAgents)[0]){
+                            let meParcelDistance = this.map.pathBetweenTiles(this.position, [parcel.x,parcel.y], this.perceivedAgents)[0];
+                            let teammateParcelDistance = this.map.pathBetweenTiles([this.teammatePosition.x,this.teammatePosition.y], [parcel.x,parcel.y], this.perceivedAgents)[0];
+
+                            if((this.name.slice(-1) === "1" && meParcelDistance <= teammateParcelDistance) ||
+                            (this.name.slice(-1) === "2" && meParcelDistance < teammateParcelDistance) ||
+                            teammateParcelDistance === -1){ // the current agent is nearer than the teammate to the identified parcel
                                 this.addInTeammateBlacklist(parcel.id);
                                 this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
                             }else{
@@ -304,7 +317,7 @@ export class AgentTeam extends Agent {
                     // console.log(msg.body);
                     break;   
                 case "add_in_tm_blacklist":
-                    this.parcelsBlackList.push(msg.body);
+                    this.addParcelInBlacklist(msg.body, 20);
                     break;
                 case "ask_teammate_availability":
                     const intention = agent.getCurrentIntention();
@@ -355,6 +368,23 @@ export class AgentTeam extends Agent {
         })
 
         client.onParcelsSensing( async ( perceivedParcels ) => {
+            const intention = this.getCurrentIntention();
+            const desire = intention ? intention.desire : "random";
+            const predicate = intention ? intention.predicate : "";
+            const perceivedAgents = this.perceivedAgents;
+
+            if(desire === "go_pick_up"){
+                const parcel_to_pickup_pos = {x: predicate[0] ,y: predicate[1]}
+
+                if(this.map.createAgentsMap(perceivedAgents)[parcel_to_pickup_pos.x][parcel_to_pickup_pos.y] ||
+                this.perceivedParcels.get(predicate[2]).x !== parcel_to_pickup_pos.x ||  
+                this.perceivedParcels.get(predicate[2]).y !== parcel_to_pickup_pos.y){ //so, the package I want to pickup is no more available because expired, moved, taken or blocked by another agent
+                    
+                    this.addParcelInBlacklist(predicate[2], 20);
+                    this.eventEmitter.emit("parcel to pickup no more available"); // intention revision is performed
+                }
+            }
+
             if (this.teammateDesire === "random" && this.perceivedParcels.size !== 0){
                 this.shareParcels(perceivedParcels);
             }
