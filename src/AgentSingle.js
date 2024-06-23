@@ -46,7 +46,7 @@ export class AgentSingle extends Agent {
                     let bestParcelId = this.selectParcel()[1];
                     let parcel = this.perceivedParcels.get(bestParcelId);
 
-                    if (this.carriedParcels > 0){
+                    if (bestParcelId === null && this.carriedParcels > 0) {
                         this.addIntention("go_delivery");
                     }
                     else if (parcel !== undefined) {
@@ -83,20 +83,40 @@ export class AgentSingle extends Agent {
         const position = this.position;
         const perceivedAgents = this.perceivedAgents;
         const areParcelExpiring = this.areParcelExpiring;
+        const carriedParcels = this.carriedParcels;
+
+        // TODO: vogliamo mettere un massimo di parcels da prendere di fila?
+        if (carriedParcels > 5)
+            return [bestScore, bestParcel, bestDelivery];
 
         this.perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
-
             let parcelReward = parcel.reward;
+
+            // Calculate agent-parcel distance
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x, parcel.y], perceivedAgents);
+            // Get the distance from the delivery tile that is closer to the parcel
             let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
 
+            // Calculate the maximum score obtainable from the parcel by considering if there's a decadyng score or not.
             let parcelScore = 0;
-            if (areParcelExpiring){
-                parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
-            }else{
+            
+            if (areParcelExpiring) {
+
+                let totalPathLength = parcelAgentDistance + parcelNearestDeliveryDistance;
+
+                parcelScore = parcelReward - totalPathLength;
+
+                // If we are already carrying parcels, we consider also the points lost on the carried parcels to get this parcel
+                if (carriedParcels > 0)
+                    parcelScore = parcelScore - (carriedParcels * totalPathLength);
+
+            }
+            else {
+
                 parcelScore = parcelReward
+
             }
             
             if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
@@ -107,6 +127,10 @@ export class AgentSingle extends Agent {
 
         })
 
+        /**
+         * TODO: forse possiamo fare ritornare solamente il parcelId?
+         * Lo score e la best delivery alla fine non li usiamo.
+         */
         return [bestScore, bestParcel, bestDelivery];
 
     }
