@@ -191,6 +191,20 @@ export class Agent {
 
     }
 
+        
+    /**
+     * Function that implement the logic for adding a parcel into the blacklist.
+     */
+    addParcelInBlacklist(parcelId, maxBlacklistSize) {
+
+        this.parcelsBlackList.push(parcelId);
+
+        if(this.parcelsBlackList.length > maxBlacklistSize){
+            this.parcelsBlackList.shify();
+        }
+
+    }
+
     printDebug() {
 
         console.log("Agent {");
