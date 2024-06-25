@@ -62,11 +62,11 @@ export class Intention {
             if ( planClass.isApplicableTo( this.desire ) ) {
                 // plan is instantiated
                 this.#currentPlan = new planClass(this.parent);
-                console.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
+                console.log(this.parent.name+': achieving intention', ...this.predicate, 'with plan', planClass.name);
                 // and plan is executed and result returned
                 try {
                     const plan_res = await this.currentPlan.execute( ...this.predicate );
-                    console.log('succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
+                    console.log(this.parent.name+': succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res);
                     return plan_res;
                 // or errors are caught so to continue with next plan
                 } catch (msg) {

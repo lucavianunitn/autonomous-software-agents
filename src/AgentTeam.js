@@ -79,22 +79,26 @@ export class AgentTeam extends Agent {
                 let isMapDefined = this.map !== undefined;
 
                 if (isMapDefined) {
+                    if(!this.perceivedAgents.has(this.teammateId)){
+                        await this.askCoordinates();
+                        this.perceivedAgents.set(this.teammateId, {x:this.teammatePosition.x, y:this.teammatePosition.y});
+                    }
 
                     let [bestScore, bestParcelId, needTeammate] = this.selectParcel();
                     let parcel = this.perceivedParcels.get(bestParcelId);
 
-                    if (needTeammate) {
+                    // if (needTeammate) {
 
-                        let teammateAvailability = await this.askAvailability();
+                    //     let teammateAvailability = await this.askAvailability();
+                    //     console.log("AVAILABILITY TEAMMATE "+teammateAvailability)
+                    //     if (teammateAvailability){
+                    //         await this.askCoordinates();
+                    //         this.addIntention("go_delivery_team");
+                    //     }
 
-                        if (teammateAvailability){
-                            await this.askCoordinates();
-                            this.addIntention("go_delivery_team");
-                        }
+                    // }
 
-                    }
-
-                    if (this.carriedParcels > 0){
+                    if (bestParcelId === null && this.carriedParcels > 0){
 
                         let canDeliver;
                         [canDeliver, needTeammate] = this.evaluateDelivery(this.position.x, this.position.y);
@@ -108,12 +112,15 @@ export class AgentTeam extends Agent {
                                 if (teammateAvailability){
                                     await this.askCoordinates();
                                     this.addIntention("go_delivery_team");
+                                }else {
+                                    this.addIntention("random");
                                 }
         
-                            }
-                            else
+                            }else{
                                 this.addIntention("go_delivery");
-
+                            }
+                        }else {
+                            this.addIntention("random");
                         }
                      
                     }
@@ -166,6 +173,14 @@ export class AgentTeam extends Agent {
      * - the parcel distance to the nearest delivery tile (lower is better)
      */
     selectParcel() {
+        let bestScore = 0;
+        let bestParcel = null;
+        let needTeammate = false;
+        const carriedParcels = this.carriedParcels;
+
+        // TODO: vogliamo mettere un massimo di parcels da prendere di fila?
+        if (carriedParcels > 5)
+            return [bestScore, bestParcel, needTeammate];
 
         const agent = this;
         const map = this.map;
@@ -175,11 +190,7 @@ export class AgentTeam extends Agent {
 
         let perceivedAgentsNoTeammate = new Map(perceivedAgents);
         perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
-
-        let bestScore = 0;
-        let bestParcel = null;
-        let needTeammate = false;
-
+        
         this.perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
@@ -189,6 +200,7 @@ export class AgentTeam extends Agent {
 
             let parcelReward = parcel.reward;
 
+            // Calculate agent-parcel distance
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x, parcel.y], perceivedAgents);
 
             if (parcelAgentDistance < 0)
@@ -199,10 +211,19 @@ export class AgentTeam extends Agent {
             if (canDeliver === false)
                 return; // continue
 
+            // Calculate the maximum score obtainable from the parcel by considering if there's a decadyng score or not.
             let parcelScore = 0;
 
             if (areParcelExpiring) {
-                parcelScore = parcelReward - parcelAgentDistance - nearestDeliveryDistance;
+
+                let totalPathLength = parcelAgentDistance + nearestDeliveryDistance;
+
+                parcelScore = parcelReward - totalPathLength;
+
+                // If we are already carrying parcels, we consider also the points lost on the carried parcels to get this parcel
+                if (carriedParcels > 0)
+                    parcelScore = parcelScore - (carriedParcels * totalPathLength);
+
             } else {
                 parcelScore = parcelReward
             }
@@ -215,6 +236,10 @@ export class AgentTeam extends Agent {
 
         })
 
+        if(needTeammate == true && carriedParcels > 0){
+            return [0, null, false]
+        }
+        
         return [bestScore, bestParcel, needTeammate];
 
     }
@@ -298,7 +323,7 @@ export class AgentTeam extends Agent {
                     break;
                 case "share_desire":
                     this.teammateDesire = msg.body;
-                    console.log("share_desire "+this.teammateDesire);
+                    //console.log(this.name+" received share_desire "+this.teammateDesire);
                     break;
                 case "share_parcels":
                     let notTakenParcels = false;
@@ -322,9 +347,9 @@ export class AgentTeam extends Agent {
                 case "ask_teammate_availability":
                     const intention = agent.getCurrentIntention();
                     if (intention === undefined || intention.desire === "random") {
-                        reply(true);
-                        agent.stop();
                         agent.#stayIdle = true;
+                        agent.stop();
+                        reply(true);
                     }
                     else
                         reply(false);
@@ -373,7 +398,7 @@ export class AgentTeam extends Agent {
             const predicate = intention ? intention.predicate : "";
             const perceivedAgents = this.perceivedAgents;
 
-            if(desire === "go_pick_up"){
+            if(desire === "go_pick_up" && this.perceivedParcels.has(predicate[2])){
                 const parcel_to_pickup_pos = {x: predicate[0] ,y: predicate[1]}
 
                 if(this.map.createAgentsMap(perceivedAgents)[parcel_to_pickup_pos.x][parcel_to_pickup_pos.y] ||

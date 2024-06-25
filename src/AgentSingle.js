@@ -6,6 +6,8 @@ export class AgentSingle extends Agent {
 
         super(host, token);
 
+        this.onCommunication();
+
         /**
          * This listener is used to stop executing random intentions when a new free parcel is found.
          */
@@ -21,6 +23,15 @@ export class AgentSingle extends Agent {
 
         })
 
+        this.eventEmitter.on("parcel to pickup no more available", () => {
+            const intention = this.getCurrentIntention();
+            
+            if (intention === undefined)
+                return;
+
+            if (intention.desire === "go_pick_up")
+                intention.stop();
+        })
     }
 
     async intentionLoop ( ) {
@@ -79,6 +90,7 @@ export class AgentSingle extends Agent {
         let bestParcel = null;
         let bestDelivery = null;
 
+        const agent = this;
         const map = this.map;
         const position = this.position;
         const perceivedAgents = this.perceivedAgents;
@@ -92,6 +104,10 @@ export class AgentSingle extends Agent {
         this.perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
+
+            if (parcel.carriedBy !== null || agent.parcelsBlackList.includes(parcelId))
+                return; // continue
+            
             let parcelReward = parcel.reward;
 
             // Calculate agent-parcel distance
@@ -133,6 +149,30 @@ export class AgentSingle extends Agent {
          */
         return [bestScore, bestParcel, bestDelivery];
 
+    }
+
+    onCommunication(){
+        const agent = this;
+        const client = this.client;
+
+        client.onParcelsSensing( async ( perceivedParcels ) => {
+            const intention = this.getCurrentIntention();
+            const desire = intention ? intention.desire : "random";
+            const predicate = intention ? intention.predicate : "";
+            const perceivedAgents = this.perceivedAgents;
+
+            if(desire === "go_pick_up" && this.perceivedParcels.has(predicate[2])){
+                const parcel_to_pickup_pos = {x: predicate[0] ,y: predicate[1]}
+
+                if(this.map.createAgentsMap(perceivedAgents)[parcel_to_pickup_pos.x][parcel_to_pickup_pos.y] ||
+                this.perceivedParcels.get(predicate[2]).x !== parcel_to_pickup_pos.x ||  
+                this.perceivedParcels.get(predicate[2]).y !== parcel_to_pickup_pos.y){ //so, the package I want to pickup is no more available because expired, moved, taken or blocked by another agent
+                    
+                    this.addParcelInBlacklist(predicate[2], 20);
+                    this.eventEmitter.emit("parcel to pickup no more available"); // intention revision is performed
+                }
+            }
+        })
     }
 
 }
