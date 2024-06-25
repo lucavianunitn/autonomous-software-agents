@@ -73,12 +73,13 @@ export class AgentTeam extends Agent {
                 // Remove from the queue
                 this.intentionQueue.shift();
 
-            }
-            else {
+            } else {
 
                 let isMapDefined = this.map !== undefined;
 
                 if (isMapDefined) {
+
+                    // I need to know my teammate position in order to understand if I need it during the delivery, and so also for selectParcel()
                     if(!this.perceivedAgents.has(this.teammateId)){
                         await this.askCoordinates();
                         this.perceivedAgents.set(this.teammateId, {x:this.teammatePosition.x, y:this.teammatePosition.y});
@@ -86,17 +87,6 @@ export class AgentTeam extends Agent {
 
                     let [bestScore, bestParcelId, needTeammate] = this.selectParcel();
                     let parcel = this.perceivedParcels.get(bestParcelId);
-
-                    // if (needTeammate) {
-
-                    //     let teammateAvailability = await this.askAvailability();
-                    //     console.log("AVAILABILITY TEAMMATE "+teammateAvailability)
-                    //     if (teammateAvailability){
-                    //         await this.askCoordinates();
-                    //         this.addIntention("go_delivery_team");
-                    //     }
-
-                    // }
 
                     if (bestParcelId === null && this.carriedParcels > 0){
 
@@ -112,23 +102,23 @@ export class AgentTeam extends Agent {
                                 if (teammateAvailability){
                                     await this.askCoordinates();
                                     this.addIntention("go_delivery_team");
-                                }else {
-                                    this.addIntention("random");
                                 }
         
                             }else{
                                 this.addIntention("go_delivery");
                             }
-                        }else {
-                            this.addIntention("random");
                         }
-                     
+            
                     }
                     else if (parcel !== undefined) {
+
                         if(this.#teammateDesire !== "random"){  //so that my teammate won't go for it because is already busy
+
                             await this.addInTeammateBlacklist(parcel.id);
                             this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
+
                         }else{
+
                             await this.askCoordinates();
 
                             let meParcelDistance = this.map.pathBetweenTiles(this.position, [parcel.x,parcel.y], this.perceivedAgents)[0];
@@ -137,15 +127,19 @@ export class AgentTeam extends Agent {
                             if((this.name.slice(-1) === "1" && meParcelDistance <= teammateParcelDistance) ||
                             (this.name.slice(-1) === "2" && meParcelDistance < teammateParcelDistance) ||
                             teammateParcelDistance === -1){ // the current agent is nearer than the teammate to the identified parcel
+
                                 this.addInTeammateBlacklist(parcel.id);
                                 this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
+
                             }else{
-                                this.addIntention("random", parcel.x, parcel.y, parcel.id);
+
+                                this.addIntention("random");
+
                             }
                         }
                     }
-                    else {
-                        // presenza pacchetti chiesta in onParcelSensing e limitata a questo caso
+                    
+                    if(this.intentionQueue.length == 0){
                         this.addIntention("random");
                     }
 
@@ -229,16 +223,13 @@ export class AgentTeam extends Agent {
             }
 
             if (parcelScore > bestScore) {
+
                 bestScore = parcelScore;
                 bestParcel = parcelId;
                 needTeammate = needTeammateTemp;
             }
 
         })
-
-        if(needTeammate == true && carriedParcels > 0){
-            return [0, null, false]
-        }
         
         return [bestScore, bestParcel, needTeammate];
 

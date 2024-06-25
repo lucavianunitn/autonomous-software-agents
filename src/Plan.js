@@ -97,6 +97,11 @@ export class ReachRandomDelivery extends Plan {
                     await actionMove(client, 'down');
                     break;
             }
+
+            if(action !== 'PUT_DOWN_ON_DELIVERY' && action !== 'PUT_DOWN'){
+                let pickedParcels = (await actionPickUp(client)).length;
+                this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
+            }
         }       
     }
 
@@ -121,6 +126,8 @@ export class RandomWalk extends Plan {
 
             prevMove = await actionRandomMove(client, prevMove);
 
+            let pickedParcels = (await actionPickUp(client)).length;
+            this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
         }
 
     }
@@ -196,6 +203,11 @@ export class GoPickUp extends Plan {
                     this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                     break;
             }
+
+            if(action !== 'PUT_DOWN_ON_DELIVERY' && action !== 'PUT_DOWN'){
+                let pickedParcels = (await actionPickUp(client)).length;
+                this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
+            }
         }       
     }
 
@@ -268,6 +280,11 @@ export class GoDelivery extends Plan {
                     await actionPutDown(client);
                     this.parent.carriedParcels = 0;
                     break;
+            }
+
+            if(action !== 'PUT_DOWN_ON_DELIVERY' && action !== 'PUT_DOWN'){
+                let pickedParcels = (await actionPickUp(client)).length;
+                this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
             }
         }
     }
@@ -357,6 +374,11 @@ export class GoDeliveryTeam extends Plan {
                         await actionPutDown(client);
                         this.parent.carriedParcels = 0;
                         break;
+                }
+
+                if(action !== 'PUT_DOWN_ON_DELIVERY' && action !== 'PUT_DOWN'){
+                    let pickedParcels = (await actionPickUp(client)).length;
+                    this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
                 }
             } else {
                 let reply = await client.ask( teammateId, { 
