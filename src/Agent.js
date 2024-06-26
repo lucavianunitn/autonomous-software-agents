@@ -200,7 +200,7 @@ export class Agent {
         this.parcelsBlackList.push(parcelId);
 
         if(this.parcelsBlackList.length > maxBlacklistSize){
-            this.parcelsBlackList.shify();
+            this.parcelsBlackList.shift();
         }
 
     }

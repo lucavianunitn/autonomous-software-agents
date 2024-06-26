@@ -23,8 +23,9 @@ class Plan {
     considerNearAgents(beliefset, agentX, agentY, perceivedAgents){
 
         perceivedAgents.forEach((agentObstacle) => {
-            if(Math.abs(agentObstacle.x-agentX) <= 1 || Math.abs(agentObstacle.y-agentY) <= 1){
-                beliefset.declare('blocked tile_'+agentObstacle.x+'_'+agentObstacle.y); 
+            let agentObstacleRounded = {x: Math.round(agentObstacle.x), y: Math.round(agentObstacle.y)};
+            if(Math.abs(agentObstacleRounded.x-agentX) <= 1 || Math.abs(agentObstacleRounded.y-agentY) <= 1){
+                beliefset.declare('blocked tile_'+agentObstacleRounded.x+'_'+agentObstacleRounded.y); 
                 // the tile my agent is near to is blocked by another one, are not considered more distant agents because we assume that in the meanwhile they are in another position
             }
         })
