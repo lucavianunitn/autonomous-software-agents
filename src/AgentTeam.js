@@ -1,9 +1,12 @@
 import { Agent } from "./Agent.js";
-import { actionMove, actionPickUp, actionPutDown, actionRandomMove } from "./actions.js";
+import { actionMove, actionPickUp, actionPutDown } from "./actions.js";
 
 export class AgentTeam extends Agent {
 
+    // a variable that, if set to true, will make the agent move only through directives from its teammate
     #stayIdle;
+    get stayIdle() { return this.#stayIdle; }
+    set stayIdle(stayIdle) { this.#stayIdle = stayIdle; }
 
     #teammateId;
     get teammateId() { return this.#teammateId; }
@@ -20,21 +23,21 @@ export class AgentTeam extends Agent {
     // Debug Flags
     #onReceivedMsgVerbose = process.env.ON_RECEIVED_MSG_VERBOSE === "true"
     
-    // Other flags
-    #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
-
     constructor(host, token) {
 
         super(host, token);
 
         this.onCommunication();
-        this.#stayIdle = false;
+        this.stayIdle = false;
 
     }
 
     // TODO: insert modifications for teamwork communication
     async intentionLoop ( ) {
 
+        /**
+         * This listener is used to stop executing random intentions when a new free parcel is found.
+         */
         this.eventEmitter.on("found free parcels", () => {
             const intention = this.getCurrentIntention();
 
@@ -45,6 +48,9 @@ export class AgentTeam extends Agent {
                 intention.stop();
         })
 
+        /**
+         * This listener is used to stop executing go_pick_up intentions when a new the targeted parcel is no more available (e.g. moved or blocked).
+         */
         this.eventEmitter.on("parcel to pickup no more available", () => {
             const intention = this.getCurrentIntention();
             
@@ -57,7 +63,8 @@ export class AgentTeam extends Agent {
 
         while ( true ) {
 
-            if (this.#stayIdle) {
+            // In the case the agent is involved in a teamwork, make it idle without make it considering other intentions
+            if (this.stayIdle) {
                 await new Promise(r => setTimeout(r, 1000));
                 continue;
             }
@@ -79,45 +86,45 @@ export class AgentTeam extends Agent {
 
                 if (isMapDefined) {
 
-                    // I need to know my teammate position in order to understand if I need it during the delivery, and so also for selectParcel()
+                    // I need to know my teammate position in order to understand if I need its collaboration during the delivery. This information is used also in selectParcel()
                     if(!this.perceivedAgents.has(this.teammateId)){
                         await this.askCoordinates();
                         this.perceivedAgents.set(this.teammateId, {x:this.teammatePosition.x, y:this.teammatePosition.y});
                     }
 
-                    let [bestScore, bestParcelId, needTeammate] = this.selectParcel();
+                    let [bestParcelId, needTeammate] = this.selectParcel();
                     let parcel = this.perceivedParcels.get(bestParcelId);
 
-                    if (bestParcelId === null && this.carriedParcels > 0){
+                    if (bestParcelId === null && this.carriedParcels > 0){ // if I'm carrying a parcel and there aren't more appealing ones I'll deliver
 
                         let canDeliver;
                         [canDeliver, needTeammate] = this.evaluateDelivery(this.position.x, this.position.y);
 
                         if (canDeliver) {
 
-                            if (needTeammate) {
+                            if (needTeammate) { // if the agent need the teammate help in order to deliver, ask for its availability and eventually deliver
 
-                                let teammateAvailability = await this.askAvailability();
+                                let teammateAvailability = await this.askAvailability(); //if the teammate is available, make it idle in order to follow the current agent instructions
         
                                 if (teammateAvailability){
                                     await this.askCoordinates();
                                     this.addIntention("go_delivery_team");
                                 }
         
-                            }else{
+                            }else{ // if the agent don't need the teammate help in order to deliver, deliver without involving it
                                 this.addIntention("go_delivery");
                             }
                         }
             
                     }
-                    else if (parcel !== undefined) {
+                    else if (parcel !== undefined) { // if an appealing parcel is found
 
-                        if(this.#teammateDesire !== "random"){  //so that my teammate won't go for it because is already busy
+                        if(this.#teammateDesire !== "random"){  //if that parcel is not currently considerable by my teammate, try to pick it up and not making it considerable by the teammate in the future
 
                             await this.addInTeammateBlacklist(parcel.id);
                             this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
 
-                        }else{
+                        }else{ // if instead also the teammate is idle and wants to pick it up
 
                             await this.askCoordinates();
 
@@ -126,7 +133,7 @@ export class AgentTeam extends Agent {
 
                             if((this.name.slice(-1) === "1" && meParcelDistance <= teammateParcelDistance) ||
                             (this.name.slice(-1) === "2" && meParcelDistance < teammateParcelDistance) ||
-                            teammateParcelDistance === -1){ // the current agent is nearer than the teammate to the identified parcel
+                            teammateParcelDistance === -1){ // make it pick it up by the nearest agent (or by considering their name as discriminating factor in the case the distance will be the same)
 
                                 this.addInTeammateBlacklist(parcel.id);
                                 this.addIntention("go_pick_up", parcel.x, parcel.y, parcel.id);
@@ -139,17 +146,15 @@ export class AgentTeam extends Agent {
                         }
                     }
                     
-                    if(this.intentionQueue.length == 0){
+                    if(this.intentionQueue.length == 0){ // if the agent will not picking up or delivering, make it moving random in order to inspect the enviroment
                         this.addIntention("random");
                     }
 
                     const intention = this.getCurrentIntention();
                     const desire = intention ? intention.desire : "random";
 
-                    this.shareDesire(desire);
+                    this.shareDesire(desire); // share the desire pushed in the intention queue to the teammate
                 }
-
-                // TODO: random move if map is not defined?
 
             }
 
@@ -160,11 +165,12 @@ export class AgentTeam extends Agent {
 
     /**
      * TODO: improve this method
-     * TODO: insert modifications for teamwork communication
-     * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
+     * It will find the best parcel to try to pickup based on its estimated profit once delivered considering:
      * - the parcel value (higher is better)
      * - the parcel distance to the agent (lower is better)
      * - the parcel distance to the nearest delivery tile (lower is better)
+     * - the number of parcels already carried (more parcels carried make less appealing to pick-up others)
+     * @returns {Object} bestParcel - the id of the most appealing parcel (String), needTeammate - the necessity to use the teammate during the parcel delivery (Boolean)
      */
     selectParcel() {
         let bestScore = 0;
@@ -183,7 +189,7 @@ export class AgentTeam extends Agent {
         const areParcelExpiring = this.areParcelExpiring;
 
         let perceivedAgentsNoTeammate = new Map(perceivedAgents);
-        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
+        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle during the delivery process, where team work could happen
         
         this.perceivedParcels.forEach(function(parcel) {
 
@@ -196,6 +202,8 @@ export class AgentTeam extends Agent {
 
             // Calculate agent-parcel distance
             let [parcelAgentDistance, path, directions] = map.pathBetweenTiles(position, [parcel.x, parcel.y], perceivedAgents);
+            // Get the distance from the delivery tile that is closer to the parcel, not considering the teammate as an obstacle
+            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgentsNoTeammate);
 
             if (parcelAgentDistance < 0)
                 return; // continue
@@ -210,7 +218,7 @@ export class AgentTeam extends Agent {
 
             if (areParcelExpiring) {
 
-                let totalPathLength = parcelAgentDistance + nearestDeliveryDistance;
+                let totalPathLength = parcelAgentDistance + parcelNearestDeliveryDistance;
 
                 parcelScore = parcelReward - totalPathLength;
 
@@ -222,7 +230,7 @@ export class AgentTeam extends Agent {
                 parcelScore = parcelReward
             }
 
-            if (parcelScore > bestScore) {
+            if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
 
                 bestScore = parcelScore;
                 bestParcel = parcelId;
@@ -231,17 +239,24 @@ export class AgentTeam extends Agent {
 
         })
         
-        return [bestScore, bestParcel, needTeammate];
+        return [bestParcel, needTeammate];
 
     }
 
+    /**
+     * It will find if, from a certain tile, it's possible to reach a delivery tile, and eventually if can be reached only through teamwork
+     * @param {Number} fromX - The X coordinate of the tile considered as starting point 
+     * @param  {Number} fromY - The Y coordinate of the tile considered as starting point 
+     * @returns {Object} canDeliver - the possibility to reach a delivery tile (Boolean), needTeammate - the necessity to use the teammate during the parcel delivery (Boolean)
+     */
     evaluateDelivery(fromX, fromY) {
 
         const perceivedAgents = this.perceivedAgents;
 
         let perceivedAgentsNoTeammate = new Map(perceivedAgents);
-        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to dont't see the teammate as an obstacle
+        perceivedAgentsNoTeammate.delete(this.#teammateId) // In order to don't see the teammate as an obstacle
 
+        // Attempt to deliver without involving the teammate
         let [nearestDeliveryDistance, coords] = this.map.getNearestDelivery([fromX, fromY], perceivedAgents);
 
         let canDeliver = true;
@@ -249,6 +264,7 @@ export class AgentTeam extends Agent {
 
         if (nearestDeliveryDistance === Infinity) { // See if it is possible to deliver parcel with the help of teammate.
 
+            // Attempt to deliver by involving the teammate
             [nearestDeliveryDistance, coords] = this.map.getNearestDelivery([fromX, fromY], perceivedAgentsNoTeammate);
 
             if (nearestDeliveryDistance === Infinity)
@@ -262,23 +278,39 @@ export class AgentTeam extends Agent {
 
     }
 
+    /**
+     * It will ask to the teammate to share its coordinates
+     */
     async askCoordinates(){
         var reply = await this.client.ask( this.teammateId, {
             operation: "ask_teammate_coordinates",
         } );
 
         this.teammatePosition = reply;
-        // console.log("teammate position")
-        // console.log(this.teammatePosition)
+
+        if(this.#onReceivedMsgVerbose){
+            console.log(this.name+": my teammate position is")
+            console.log(this.teammatePosition)
+        }
     }
 
+    /**
+     * It will share the current agent desire with the teammate
+     */
     async shareDesire(desire){
         await this.client.say( this.teammateId, {
             operation: "share_desire",
             body: desire
         } );
+
+        if(this.#onReceivedMsgVerbose){
+            console.log(this.name+": my current desire is "+desire)
+        }
     }
 
+    /**
+     * It will share the current perceived parcels with the teammate
+     */
     async shareParcels(perceivedParcels){
         await this.client.say( this.teammateId, {
             operation: "share_parcels",
@@ -286,6 +318,9 @@ export class AgentTeam extends Agent {
         } );
     }
 
+    /**
+     * It will order to the teammate to include in its blacklist a certain parcel
+     */
     async addInTeammateBlacklist(parcelId){
         await this.client.say( this.teammateId, {
             operation: "add_in_tm_blacklist",
@@ -293,29 +328,43 @@ export class AgentTeam extends Agent {
         } );
     }
 
+    /**
+     * It ask to the teammate its availability durinfìg the delivery teamwork
+     * @returns {Boolean} reply - the teammate availability
+     */
     async askAvailability(){
         var reply = await this.client.ask( this.teammateId, {
             operation: "ask_teammate_availability",
         } );
 
+        if(this.#onReceivedMsgVerbose){
+            console.log(this.name+": my teammate availability is "+reply)
+        }
+
         return reply;
     }
 
+    // it handles the action to be performed after having received a message from the teammate
     onCommunication(){
         const agent = this;
         const client = this.client;
 
         client.onMsg( async (id, name, msg, reply) => {
-            if (id !== agent.#teammateId) return;
+            if (id !== agent.#teammateId) return; // it ensures that the messages comes from the teammate
 
             switch(msg.operation){
                 case "ask_teammate_coordinates":
                     reply({x: Math.round(this.position.x), y: Math.round(this.position.y)});
                     break;
+
                 case "share_desire":
                     this.teammateDesire = msg.body;
-                    //console.log(this.name+" received share_desire "+this.teammateDesire);
+
+                    if(this.#onReceivedMsgVerbose){
+                        console.log(this.name+": my teammate desire is "+msg.body)
+                    }
                     break;
+
                 case "share_parcels":
                     let notTakenParcels = false;
 
@@ -324,21 +373,28 @@ export class AgentTeam extends Agent {
                     }
         
                     // Check if at least one parcel is not taken
-                    notTakenParcels = notTakenParcels ? true : this.selectParcel()[1] !== null;
+                    notTakenParcels = notTakenParcels ? true : this.selectParcel()[0] !== null;
         
                     if (notTakenParcels)
                         this.eventEmitter.emit("found free parcels"); // intention revision is performed
         
-                    // console.log("share_parcels");
-                    // console.log(msg.body);
+                    if(this.#onReceivedMsgVerbose){
+                        console.log(this.name+": my teammate shares with me the following parcels");
+                        console.log(msg.body);
+                    }
                     break;   
+
                 case "add_in_tm_blacklist":
                     this.addParcelInBlacklist(msg.body, 20);
+                    if(this.#onReceivedMsgVerbose){
+                        console.log(this.name+": following my teammate suggestion, I've added in my blacklist "+msg.body);
+                    }
                     break;
+
                 case "ask_teammate_availability":
                     const intention = agent.getCurrentIntention();
                     if (intention === undefined || intention.desire === "random") {
-                        agent.#stayIdle = true;
+                        agent.stayIdle = true;
                         agent.stop();
                         reply(true);
                     }
@@ -371,18 +427,32 @@ export class AgentTeam extends Agent {
                                 break;
                         }
 
+                        if(this.#onReceivedMsgVerbose){
+                            console.log(this.name+": following my teammate suggestion, I've performed the action "+msg.body);
+                        }
+
+                        if(action !== 'PUT_DOWN_ON_DELIVERY' && action !== 'PUT_DOWN'){
+                            let pickedParcels = (await actionPickUp(client)).length;
+                            this.parent.carriedParcels = pickedParcels + this.parent.carriedParcels;
+                        }
+
                         reply(true) // the action requested was correctly performed
                     } catch {
                         reply(false) // the action requested failed
                     }
                     break;
+                    
                 case 'release_availability':
-                    this.#stayIdle = false
+                    this.stayIdle = false
                     break;  
             }
     
         })
 
+        /**
+         * - If the agent has go_pick_up as current desire, it ensures that if the parcel is in the agent's view and it's no more appealing (e.g. is blocked or moved), the go_pick_up plan is revisioned
+         * - If the teammate is idle (e.g. is moving random), the agent shares with it the perceived parcels in order to make it do some pick-ups
+        */
         client.onParcelsSensing( async ( perceivedParcels ) => {
             const intention = this.getCurrentIntention();
             const desire = intention ? intention.desire : "random";

@@ -44,6 +44,7 @@ export class Agent {
     #perceivedAgents = new Map();
     get perceivedAgents() { return this.#perceivedAgents; }
 
+    // TODO: remove because not used
     #carriedReward = 0;
     get carriedReward() { return this.#carriedReward; }
     set carriedReward(reward) { this.#carriedReward = reward; }
@@ -52,6 +53,7 @@ export class Agent {
     get carriedParcels() { return this.#carriedParcels; }
     set carriedParcels(parcels) { this.#carriedParcels = parcels; }
 
+    // array of parcels' ids belonging to parcels to ignore (e.g. because to be taken by teammate or because blocked by other agents)
     #parcelsBlackList = [];
     get parcelsBlackList() { return this.#parcelsBlackList; }
 
@@ -63,6 +65,7 @@ export class Agent {
 
     // Other flags
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
+    get areParcelExpiring() { return this.#areParcelExpiring; }
 
     constructor(host, token) {
 
@@ -73,6 +76,7 @@ export class Agent {
 
         this.client.onConnect( () => console.log( "socket", this.client.socket.id ) );
         this.client.onDisconnect( () => console.log( "disconnected", this.client.socket.id ) );
+
         /**
          * The event handled by this listener is emitted on agent connection.
          */
@@ -83,6 +87,7 @@ export class Agent {
             if(this.#onMapVerbose) this.#map.printDebug();
 
         });
+
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * For each movement there are two event: one partial and one final.
@@ -98,9 +103,10 @@ export class Agent {
             if(this.#onYouVerbose) this.printDebug();
 
         });
+
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
-         * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
+         * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area
          */
         this.client.onParcelsSensing( async ( perceivedParcels ) => {
 
@@ -113,7 +119,7 @@ export class Agent {
             }
 
             // Check if at least one parcel is not taken
-            notTakenParcels = notTakenParcels ? true : this.selectParcel()[1] !== null;
+            notTakenParcels = notTakenParcels ? true : this.selectParcel()[0] !== null;
 
             if (notTakenParcels)
                 this.eventEmitter.emit("found free parcels"); // intention revision is performed
@@ -121,6 +127,7 @@ export class Agent {
             if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
 
         });
+
         /**
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
@@ -194,6 +201,8 @@ export class Agent {
         
     /**
      * Function that implement the logic for adding a parcel into the blacklist.
+     * @param {String} parcelId - the id of the parcel to add in the blacklist 
+     * @param  {Number} maxBlacklistSize - the maximum size of the blacklist  
      */
     addParcelInBlacklist(parcelId, maxBlacklistSize) {
 
@@ -205,6 +214,9 @@ export class Agent {
 
     }
 
+    /**
+     * Function that prints the current agent information.
+     */
     printDebug() {
 
         console.log("Agent {");
@@ -217,6 +229,9 @@ export class Agent {
         console.log();
     }
 
+    /**
+     * Function that prints the information about the perceived parcels.
+     */
     printPerceivedParcels() {
 
         console.log(`Agent '${this.name}' perceived parcels map:`);
@@ -224,6 +239,9 @@ export class Agent {
         console.log();
     }
 
+    /**
+     * Function that prints the information about the perceived agents.
+     */
     printPerceivedAgents() {
 
         console.log(`Agent '${this.name}' perceived agents map:`);

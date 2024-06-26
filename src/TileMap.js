@@ -50,7 +50,11 @@ export class TileMap {
     }
 
     /**
-     * Given a start and an end position, it returns
+     * Given 
+     * @param {Object} start - The starting tile as Number[2] of coordinates
+     * @param  {Object} end - The destination tile as Number[2] of coordinates
+     * @param  {Object} agentsPerceived - agent_id -> agent details map 
+     * @returns {Object} 
      * - erdos[end], so the distance between start and end (useful to understand if moving from start to end could worth it in certain scenarios)
      * - path, the sequence of cells I need to pass through to reach the end
      * - direction, the sequence of direction I need to follow to reach the end
@@ -132,6 +136,8 @@ export class TileMap {
     
     /**
      * By iterating on the single agents, it creates a height x length map with true where an agent is perceived
+     * @param  {Object} agentsPerceived - agent_id -> agent details map 
+     * @returns {Object} width x height matrix containing true where another agent is present, false otherwise
      */
     createAgentsMap(agentsPerceived) {
 
@@ -154,6 +160,9 @@ export class TileMap {
 
     /**
      * Returns the nearest delivery tile starting from the given tile
+     * @param  {Object} [x,y] - coordinates of the starting tile to consider
+     * @param  {Object} agentsPerceived - agent_id -> agent details map 
+     * @returns {Object} minDistance - the distance between the starting point and the nearer delivery tile (Number), coords - the coordinates of the nearest delivery tile found(Object)
      */
     getNearestDelivery([x,y], agentsPerceived) {
 
@@ -176,6 +185,7 @@ export class TileMap {
     }
 
     /**
+     * NO MORE USED
      * Returns a tile that is at the center or near it.
      * The parameter returnDeliveryCell if true makes the function to return the most centered delivery cell, useful in certain maps with delivery tiles only on the edges (e.g. first challenge)
      */
@@ -246,6 +256,9 @@ export class TileMap {
         return true;
     }
 
+    /*
+    It prints the details about the map
+    */
     printDebug() {
 
         console.log("TileMap {");
@@ -267,11 +280,17 @@ export class TileMap {
 
     }
 
+
+
+    /**
+     * Returns the map as a pddl beliefset, to be used as part of the pddl problem
+     * @returns {Object} the map representation as pddl beliefset
+     */
     returnAsBeliefset() {
 
         const tileBeliefset = new Beliefset();
 
-        // Declare tile type
+        // Declare tile type (simple tile or delivery tile)
         for (let x = 0; x < this.width; x++) {
             for (let y = 0; y < this.height; y++) {
                 if( this.tiles[x][y] !== "empty" ){
@@ -284,7 +303,7 @@ export class TileMap {
             }
         }
 
-        // Declare tile type
+        // Declare relationship between tiles
         for (let x = 0; x < this.width; x++) { // changed the for range
             for (let y = 0; y < this.height; y++) {
                 if( this.tiles[x][y] !== "empty" ){

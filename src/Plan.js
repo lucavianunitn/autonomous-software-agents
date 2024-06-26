@@ -34,6 +34,9 @@ class Plan {
     }
 }
 
+/**
+ * A plan that satisfy the random desire. A random delivery tile is chosen and a pddl problem is solved in order to reach it
+ */
 export class ReachRandomDelivery extends Plan {
 
     static isApplicableTo ( desire ) {
@@ -71,7 +74,7 @@ export class ReachRandomDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        console.log(problem)
+        //console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -108,6 +111,9 @@ export class ReachRandomDelivery extends Plan {
 
 }
 
+/**
+ * A plan that satisfy the random desire. A random movements (different from the previous one) is performed
+ */
 export class RandomWalk extends Plan {
 
     static isApplicableTo ( desire ) {
@@ -135,6 +141,9 @@ export class RandomWalk extends Plan {
 
 }
 
+/**
+ * A plan that satisfy the go_pick_up desire. The most appealing parcel is found and a pddl problem is solved in order to reach it and pick it up
+ */
 export class GoPickUp extends Plan {
 
     static isApplicableTo ( desire ) {
@@ -173,7 +182,7 @@ export class GoPickUp extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        console.log(problem)
+        //console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -214,6 +223,9 @@ export class GoPickUp extends Plan {
 
 }
 
+/**
+ * A plan that satisfy the go_delivery desire. A pddl problem is solved in order to reach the nearest delivery tile, and to put down here the carried parcels
+ */
 export class GoDelivery extends Plan {
 
     static isApplicableTo ( desire ) {
@@ -251,7 +263,7 @@ export class GoDelivery extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        console.log(problem)
+        //console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -291,6 +303,9 @@ export class GoDelivery extends Plan {
     }
 }
 
+/**
+ * A plan that satisfy the go_delivery desire. A pddl problem is solved in order to reach the nearest delivery tile, and to put down here the carried parcels, also by using the teammate presence
+ */
 export class GoDeliveryTeam extends Plan {
 
     static isApplicableTo ( desire ) {
@@ -339,7 +354,7 @@ export class GoDeliveryTeam extends Plan {
 
         //build plan
         let problem = pddlProblem.toPddlString();
-        console.log(problem)
+        //console.log(problem)
         let domain = await readFile('./src/domain-agent.pddl' );
         //console.log( domain );
         var plan = await onlineSolver( domain, problem );
@@ -386,10 +401,11 @@ export class GoDeliveryTeam extends Plan {
                     operation: "execute_action",
                     body: action
                 });
-                console.log(reply); // TODO: understand why sometimes it prints false but it works in practice
+                //console.log(reply); 
             }
         }
 
+        // the plan is finished, also for my teammate that can be freed
         client.say( teammateId, {
             operation: "release_availability"
         });
