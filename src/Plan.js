@@ -2,6 +2,8 @@ import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Belief
 import { actionMove, actionPickUp, actionPutDown, actionRandomMove } from "./actions.js";
 import fs from 'fs';
 
+const TOTAL_RANDOM_WALK_MOVES = 30;
+
 class Plan {
 
     #parent; // parent refers to caller
@@ -17,7 +19,9 @@ class Plan {
     }
 
     stop () {
+
         this.#stopped = true;
+        
     }
 
     considerNearAgents(beliefset, agentX, agentY, perceivedAgents){
@@ -126,7 +130,7 @@ export class RandomWalk extends Plan {
 
         let prevMove = 'right';
 
-        for (let i=0; i<10; i++) {
+        for (let i=0; i<TOTAL_RANDOM_WALK_MOVES; i++) {
 
             if (this.stopped)
                 throw {message: `Stopped Plan RandomWalk`};
@@ -160,7 +164,7 @@ export class GoPickUp extends Plan {
 
         // This prevents the definition of a pddl problem with partial coordinates (like 15.4) that would brake the execution.
         if (Number.isInteger(agentX) === false || Number.isInteger(agentY) === false ||
-            Number.isInteger(parcelX) === false || Number.isInteger(agentY) === false)
+            Number.isInteger(parcelX) === false || Number.isInteger(parcelY) === false)
             throw {message: "Invalid parameters"};
 
         let beliefset = map.returnAsBeliefset()

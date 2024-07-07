@@ -44,11 +44,6 @@ export class Agent {
     #perceivedAgents = new Map();
     get perceivedAgents() { return this.#perceivedAgents; }
 
-    // TODO: remove because not used
-    #carriedReward = 0;
-    get carriedReward() { return this.#carriedReward; }
-    set carriedReward(reward) { this.#carriedReward = reward; }
-
     #carriedParcels = 0;
     get carriedParcels() { return this.#carriedParcels; }
     set carriedParcels(parcels) { this.#carriedParcels = parcels; }
@@ -72,7 +67,7 @@ export class Agent {
         this.#agentToken = token;
         this.#client = new DeliverooApi(host, token);
 
-        // Listeners
+        // LISTENERS
 
         this.client.onConnect( () => console.log( "socket", this.client.socket.id ) );
         this.client.onDisconnect( () => console.log( "disconnected", this.client.socket.id ) );
@@ -84,7 +79,7 @@ export class Agent {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
-            if(this.#onMapVerbose) this.#map.printDebug();
+            if (this.#onMapVerbose) this.#map.printDebug();
 
         });
 
@@ -100,31 +95,30 @@ export class Agent {
             this.#position = {x:x, y:y};
             this.#score = score;
 
-            if(this.#onYouVerbose) this.printDebug();
+            if (this.#onYouVerbose) this.printDebug();
 
         });
 
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
-         * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area
+         * NOTE: this event is emitted also when a parcel carried by another agent enters in the visible area
          */
         this.client.onParcelsSensing( async ( perceivedParcels ) => {
 
             this.perceivedParcels.clear();
 
-            let notTakenParcels = false;
-
-            for (const parcel of perceivedParcels) {
+            for (const parcel of perceivedParcels)
                 this.perceivedParcels.set(parcel.id, parcel);
-            }
 
             // Check if at least one parcel is not taken
-            notTakenParcels = notTakenParcels ? true : this.selectParcel()[0] !== null;
+            let notTakenParcels = this.selectParcel() !== null;
 
+            // Emit an event used to stop random intentions and start a new intention revision
             if (notTakenParcels)
-                this.eventEmitter.emit("found free parcels"); // intention revision is performed
+                this.eventEmitter.emit("found free parcels");
             
-            if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
+            if (this.#onParcelsSensingVerbose) 
+                this.printPerceivedParcels();
 
         });
 
@@ -139,7 +133,7 @@ export class Agent {
             for (const agent of perceivedAgents)
                 this.perceivedAgents.set(agent.id, agent);
             
-                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+            if (this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
         });
 
@@ -158,6 +152,7 @@ export class Agent {
 
         const intention = new Intention(this, desire, predicate);
         this.intentionQueue.push(intention);
+
     }
 
     /**
@@ -208,9 +203,8 @@ export class Agent {
 
         this.parcelsBlackList.push(parcelId);
 
-        if(this.parcelsBlackList.length > maxBlacklistSize){
+        if (this.parcelsBlackList.length > maxBlacklistSize)
             this.parcelsBlackList.shift();
-        }
 
     }
 
@@ -227,6 +221,7 @@ export class Agent {
         console.log(`- score = ${this.score}`);
         console.log("}");
         console.log();
+        
     }
 
     /**
@@ -237,6 +232,7 @@ export class Agent {
         console.log(`Agent '${this.name}' perceived parcels map:`);
         console.log(this.perceivedParcels);
         console.log();
+
     }
 
     /**
@@ -247,6 +243,7 @@ export class Agent {
         console.log(`Agent '${this.name}' perceived agents map:`);
         console.log(this.perceivedAgents);
         console.log();
+
     }
 
 }

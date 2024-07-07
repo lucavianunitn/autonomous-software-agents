@@ -185,7 +185,7 @@ export class TileMap {
     }
 
     /**
-     * NO MORE USED
+     * NOTE: This method is currently not used.
      * Returns a tile that is at the center or near it.
      * The parameter returnDeliveryCell if true makes the function to return the most centered delivery cell, useful in certain maps with delivery tiles only on the edges (e.g. first challenge)
      */
@@ -279,8 +279,6 @@ export class TileMap {
         console.log();
 
     }
-
-
 
     /**
      * Returns the map as a pddl beliefset, to be used as part of the pddl problem

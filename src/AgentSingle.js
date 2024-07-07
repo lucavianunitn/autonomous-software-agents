@@ -1,5 +1,7 @@
 import { Agent } from "./Agent.js";
 
+const MAX_CARRIED_PARCELS = 5;
+
 export class AgentSingle extends Agent {
 
     constructor(host, token) {
@@ -34,6 +36,7 @@ export class AgentSingle extends Agent {
 
             if (intention.desire === "go_pick_up")
                 intention.stop();
+
         })
     }
 
@@ -57,7 +60,7 @@ export class AgentSingle extends Agent {
 
                 if (isMapDefined) {
 
-                    let bestParcelId = this.selectParcel()[0];
+                    let bestParcelId = this.selectParcel();
                     let parcel = this.perceivedParcels.get(bestParcelId);
 
                     if (bestParcelId === null && this.carriedParcels > 0) { 
@@ -79,19 +82,17 @@ export class AgentSingle extends Agent {
     }
 
     /**
-     * TODO: improve this method
      * It will find the best parcelID to try to pickup based on its estimated profit once delivered considering:
      * - the parcel value (higher is better)
      * - the parcel distance to the agent (lower is better)
      * - the parcel distance to the nearest delivery tile (lower is better)
      * - the number of parcels already carried (more parcels carried make less appealing to pick-up others)
-     * @returns {Object} bestParcel - the id of the most appealing parcel
+     * @returns {number|null} id of the best parcel
      */
     selectParcel() {
 
         let bestScore = 0;
-        let bestParcel = null;
-        let bestDelivery = null;
+        let bestParcelId = null;
 
         const agent = this;
         const map = this.map;
@@ -100,14 +101,15 @@ export class AgentSingle extends Agent {
         const areParcelExpiring = this.areParcelExpiring;
         const carriedParcels = this.carriedParcels;
 
-        // TODO: vogliamo mettere un massimo di parcels da prendere di fila?
-        if (carriedParcels > 5)
-            return [bestScore, bestParcel, bestDelivery];
+        // If agent is carrying to many parcels, do not select another parcel (and go to delviery phase).
+        if (carriedParcels > MAX_CARRIED_PARCELS)
+            return bestParcelId;
 
         this.perceivedParcels.forEach(function(parcel) {
 
             let parcelId = parcel.id;
 
+            // If the parcel is already carried by an agent or is in the blacklist, skip it.
             if (parcel.carriedBy !== null || agent.parcelsBlackList.includes(parcelId))
                 return; // continue
             
@@ -132,26 +134,22 @@ export class AgentSingle extends Agent {
                     parcelScore = parcelScore - (carriedParcels * totalPathLength);
 
             }
-            else {
-
+            else
                 parcelScore = parcelReward
-
-            }
             
             if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
                 bestScore = parcelScore;
-                bestParcel = parcelId;
-                bestDelivery = coords;
+                bestParcelId = parcelId;
             }
 
         })
 
-        return [bestParcel];
+        return bestParcelId;
 
     }
 
     setupSingleAgent(){
-        const agent = this;
+
         const client = this.client;
 
         /**
