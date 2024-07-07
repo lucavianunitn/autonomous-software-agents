@@ -1,6 +1,8 @@
 # autonomous-software-agents
 
-In order to run the code, it’s requested to clone the presented repository through:
+To run the presented project it is necessary to start locally Deliveroo with the instructions provided [here]([https://link-url-here.org](https://github.com/unitn-ASA/Deliveroo.js)). 
+
+Then, it’s requested to clone the presented repository through:
 ```console
 git clone https://github.com/lucavianunitn/autonomous-software-agents.git && cd autonomous-software-agents
 ```
