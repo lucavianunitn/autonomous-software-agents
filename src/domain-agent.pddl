@@ -18,26 +18,26 @@
     
     (:action move_up
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (up ?from ?to))
-        :effect (and (not (at ?me ?from)) (at ?me ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (blocked ?from) (not(blocked ?to)) (up ?from ?to))
+        :effect (and (not (at ?me ?from)) (at ?me ?to) (not(blocked ?from)) (blocked ?to))
     )
 
     (:action move_down
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (down ?from ?to))
-        :effect (and (not (at ?me ?from)) (at ?me ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (blocked ?from) (not(blocked ?to)) (down ?from ?to))
+        :effect (and (not (at ?me ?from)) (at ?me ?to) (not(blocked ?from)) (blocked ?to))
     )
 
     (:action move_left
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (left ?from ?to))
-        :effect (and (not (at ?me ?from)) (at ?me ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (blocked ?from) (not(blocked ?to)) (left ?from ?to))
+        :effect (and (not (at ?me ?from)) (at ?me ?to) (not(blocked ?from)) (blocked ?to))
     )
 
     (:action move_right
         :parameters (?me ?from ?to)
-        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (not(blocked ?to)) (right ?from ?to))
-        :effect (and (not (at ?me ?from)) (at ?me ?to))
+        :precondition (and (me ?me) (tile ?from) (tile ?to) (at ?me ?from) (blocked ?from) (not(blocked ?to)) (right ?from ?to))
+        :effect (and (not (at ?me ?from)) (at ?me ?to) (not(blocked ?from)) (blocked ?to))
     )
 
     (:action pick_up

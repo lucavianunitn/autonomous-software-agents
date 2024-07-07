@@ -2,18 +2,11 @@
 
 Command to start agent : node --env-file=.env index.js
 
-
-Steps package-related:
-1) Compute agent-package distance
-2) Compute packages-deliveryCell distance
-3) Compute "agent density-distance" near a package, to understand if it can be stolen (maybe by also considering its trajectory)
-4) Based on 1. 2. 3. and by their value, rank the packages in order to maximize the score
-
-Steps map related:
-1) Compute positions where the agents can see more cells
-2) Compute "centralized positions", drom which it's easily possible to reach other cells or delivery points
-3) Move randomly near those areas (offensive strategy)
-4) Stay blocked on most appealing delivery point (defensive)
-
-General:
-1) BDI coherent structure
+TODO:
+- documentare tutto (soprattuto i valori ritornati dalle varie funzioni e spiegazione dei casi possibili) [SIMONE]
+- check del codice in base ai valori ritornati dalle varie funzioni [NEXT MEETING]
+- gestire le await con dei timeout (da capire la questione delle promise "skippate") [NEXT NEXT NEXT MEETING]
+- migliorare la intention revision (esempi: [2] scadenza pacchetti in black list (magari con timeout) ; ) + divisione pacchetti se teammate a pari distanza [LUCA]
+- strategia per la raccolta di pacchetti multipli prima della consegna (sia agente singolo che multipli) [SIMONE]
+- migliorare la coordinazione degli agenti multipli (ad esempio gestire meglio le 6 challenge proposte) [NEXT MEETING, BOOM]
+- fare il report

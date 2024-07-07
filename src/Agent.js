@@ -2,304 +2,248 @@ import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 import { TileMap } from "./TileMap.js";
 import { EventEmitter } from "events";
 import { Intention } from "./Intention.js";
-import { default as config } from "./../config.js";
-
-export const client = new DeliverooApi(config.host, config.token);
 
 export class Agent {
 
-    // Agent info
-    #agentToken
+    #client;
+    get client() { return this.#client; }
+
+    #agentToken;
+    get agentToken() { return this.#agentToken; }
+    set agentToken(token) { this.#agentToken = token; }
+
     #id;
+    get id() { return this.#id; }
+    set id(id) { this.#id = id; }
+
     #name;
-    #xPos;
-    #yPos;
+    get name() { return this.#name; }
+    set name(name) { this.#name = name; }
+
+    #position = { x:null, y:null };
+    get position() { return this.#position; }
+    set position(position) { this.#position = position; }
+
     #score;
+    get score() { return this.#score; }
+    set score(score) { this.#score = score; }
 
     #map;
+    get map() { return this.#map; }
+    set map(map) { this.#map = map; }
 
-    #intention_queue = new Array();
+    #intentionQueue = new Array();
+    get intentionQueue() { return this.#intentionQueue; }
 
     #eventEmitter = new EventEmitter();
+    get eventEmitter() { return this.#eventEmitter; }
+
     #perceivedParcels = new Map();
+    get perceivedParcels() { return this.#perceivedParcels; }
+
     #perceivedAgents = new Map();
-    #carriedReward = 0;
+    get perceivedAgents() { return this.#perceivedAgents; }
+
     #carriedParcels = 0;
+    get carriedParcels() { return this.#carriedParcels; }
+    set carriedParcels(parcels) { this.#carriedParcels = parcels; }
+
+    // array of parcels' ids belonging to parcels to ignore (e.g. because to be taken by teammate or because blocked by other agents)
+    #parcelsBlackList = [];
+    get parcelsBlackList() { return this.#parcelsBlackList; }
 
     // Debug Flags
     #onYouVerbose = process.env.ON_YOU_VERBOSE === "true"
     #onMapVerbose = process.env.ON_MAP_VERBOSE === "true"
     #onParcelsSensingVerbose = process.env.ON_PARCELS_SENSING_VERBOSE === "true"
     #onAgentsSensingVerbose = process.env.ON_AGENT_SENSING_VERBOSE === "true"
-    #pathBetweenTilesVerbose = process.env.PATH_BETWEEN_TILES_VERBOSE === "true"
-    #strategyChosenVerbose = process.env.STRATEGY_CHOSEN_VERBOSE === "true"
-    #errorMessagesVerbose = process.env.ERROR_MESSAGES_VERBOSE === "true"
 
     // Other flags
-    #moveToCenteredDeliveryCell = true; // if true, during the planSearchInCenter strategy it will point to the most centered delivery tile
     #areParcelExpiring = true; // if true, the parcels that for sure cannot be delivered before their expiration won't be considered for pickup
+    get areParcelExpiring() { return this.#areParcelExpiring; }
 
-    constructor(agentToken) {
-        this.#agentToken = agentToken;
-        this.setupClient();
-    }
+    constructor(host, token) {
 
-    get xPos() { return this.#xPos; }
-    get yPos() { return this.#yPos; }
-    get map() { return this.#map; }
-    get eventEmitter() { return this.#eventEmitter; }
-    get perceivedParcels() { return this.#perceivedParcels; }
-    get perceivedAgents() { return this.#perceivedAgents; }
-    get carriedParcels() {return this.#carriedParcels}
+        this.#agentToken = token;
+        this.#client = new DeliverooApi(host, token);
 
-    set carriedParcels(carriedParcels) {this.#carriedParcels = carriedParcels}
+        // LISTENERS
 
-    async intentionLoop ( ) {
-
-        this.eventEmitter.on("found free parcels", () => {
-            const intention = this.getCurrentIntention();
-
-            if (intention === undefined)
-                return;
-
-            if (intention.desire === "random")
-                intention.stop();
-        })
-
-        while ( true ) {
-
-            // Consumes intention_queue if not empty
-            if ( this.#intention_queue.length > 0 ) {
-
-                //console.log( 'intentionRevision.loop', this.#intention_queue.map(i=>i.predicate) );
-            
-                const intention = this.getCurrentIntention();
-
-                // Start achieving intention
-                await intention.achieve().catch( error => {
-                    console.log(error);
-                } );
-
-                // Remove from the queue
-                this.#intention_queue.shift();
-
-            }
-            else {
-
-                let isMapDefined = this.#map !== undefined;
-
-                if (isMapDefined){
-                    let bestParcelId = this.getBestParcel()[1];
-                    let parcel = this.#perceivedParcels.get(bestParcelId);
-    
-                    let carriedParcels = this.#carriedParcels;
-
-                    if (carriedParcels > 0){
-                        this.queue("go_delivery");
-                    }
-                    else if (parcel !== undefined) {
-                        this.queue("go_pick_up", parcel.x, parcel.y, parcel.id);
-                    }
-                    else {
-                        this.queue("random");
-                    }
-                }
-
-                // TODO: random move if map is not defined?
-
-            }
-
-            // Postpone next iteration at setImmediate
-            await new Promise( res => setImmediate( res ) );
-        }
-    }
-
-    async queue ( desire, ...predicate ) {
-        // Check if already queued
-        if ( this.#intention_queue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
-            return; // intention is already queued
-
-        //console.log('IntentionRevisionReplace.push', predicate);
-        const intention = new Intention(this, desire, predicate);
-        this.#intention_queue.push(intention);
-    }
-
-    async stop ( ) {
-        console.log( 'stop agent queued intentions');
-        for (const intention of this.#intention_queue) {
-            intention.stop();
-        }
-    }
-
-    getCurrentIntention() {
-        return this.#intention_queue[0];
-    }
-
-    /**
-     * TODO: improve this method
-     * It will found the best parcel to try to pickup based on its estimated profit once delivered considering:
-     * - the parcel value (higher is better)
-     * - the parcel distance to the agent (lower is better)
-     * - the parcel distance to the nearest delivery tile (lower is better)
-     */
-    getBestParcel() {
-
-        let agentX = this.#xPos;
-        let agentY = this.#yPos;
-        let map = this.#map;
-        let perceivedAgents = this.#perceivedAgents;
-        let areParcelExpiring = this.#areParcelExpiring
-        let bestScore = 0;
-        let bestParcel = null;
-        let bestDelivery = null;
-
-        this.#perceivedParcels.forEach(function(parcel) {
-
-            let parcelId = parcel.id;
-
-            let parcelReward = parcel.reward;
-            let [parcelAgentDistance, path, directions] = map.pathBetweenTiles([agentX,agentY], [parcel.x,parcel.y], perceivedAgents);
-            let [parcelNearestDeliveryDistance, coords] = map.getNearestDelivery([parcel.x, parcel.y], perceivedAgents);
-
-            let parcelScore = 0;
-            if (areParcelExpiring){
-                parcelScore = parcelReward - parcelAgentDistance - parcelNearestDeliveryDistance;
-            }else{
-                parcelScore = parcelReward
-            }
-            
-            if (parcelScore > bestScore && parcelAgentDistance > 0 && parcelNearestDeliveryDistance >= 0 && parcel.carriedBy === null) {
-                bestScore = parcelScore;
-                bestParcel = parcelId;
-                bestDelivery = coords;
-            }
-
-        })
-
-        return [bestScore, bestParcel, bestDelivery];
-
-    }
-
-    getCarriedParcel() {
-        const agentID = this.#id;
-        var carriedParcels = 0;
-
-        this.#perceivedParcels.forEach(function(parcel) {
-            if (parcel.carriedBy === agentID) {
-                carriedParcels++;
-            }
-        })
-
-        return carriedParcels;
-    }
-
-    /**
-     * @returns the token of this agent.
-     */
-    getAgentToken() {
-
-        return this.#agentToken;
-    }
-    
-    /**
-     * Setup of the client.
-     */
-    setupClient() {
-
-        client.onConnect( () => console.log( "socket", client.socket.id ) );
-        client.onDisconnect( () => console.log( "disconnected", client.socket.id ) );
+        this.client.onConnect( () => console.log( "socket", this.client.socket.id ) );
+        this.client.onDisconnect( () => console.log( "disconnected", this.client.socket.id ) );
 
         /**
          * The event handled by this listener is emitted on agent connection.
          */
-        client.onMap( ( width, height, tilesInfo ) => {
+        this.client.onMap( ( width, height, tilesInfo ) => {
 
             this.#map = new TileMap(width, height, tilesInfo);
 
-            if(this.#onMapVerbose) this.#map.printDebug();
+            if (this.#onMapVerbose) this.#map.printDebug();
 
-        })
+        });
 
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
          * For each movement there are two event: one partial and one final.
          * NOTE: the partial movement gives a value like 10.4 on movements left and down; gives a value like 10.6 on mevements right and up.
          */
-        client.onYou( ( {id, name, x, y, score} ) => {
+        this.client.onYou( ( {id, name, x, y, score} ) => {
+
             this.#id = id;
             this.#name = name;
-            this.#xPos = x;
-            this.#yPos = y;
+            this.#position = {x:x, y:y};
             this.#score = score;
 
-            if(this.#onYouVerbose) this.printDebug();
-        } )
+            if (this.#onYouVerbose) this.printDebug();
+
+        });
 
         /**
          * The event handled by this listener is emitted on agent connection and on each movement of the agent.
-         * NOTE: this event is emitted also when a parcel carried by another agents enters in the visible area? 
+         * NOTE: this event is emitted also when a parcel carried by another agent enters in the visible area
          */
-        client.onParcelsSensing( async ( perceivedParcels ) => {
+        this.client.onParcelsSensing( async ( perceivedParcels ) => {
 
-            this.#perceivedParcels.clear();
+            this.perceivedParcels.clear();
 
-            let notTakenParcels = false;
-
-            for (const parcel of perceivedParcels) {
-                this.#perceivedParcels.set(parcel.id, parcel);
-            }
+            for (const parcel of perceivedParcels)
+                this.perceivedParcels.set(parcel.id, parcel);
 
             // Check if at least one parcel is not taken
-            notTakenParcels = notTakenParcels ? true : this.getBestParcel()[1] !== null;
+            let notTakenParcels = this.selectParcel() !== null;
 
+            // Emit an event used to stop random intentions and start a new intention revision
             if (notTakenParcels)
-                this.#eventEmitter.emit("found free parcels");
+                this.eventEmitter.emit("found free parcels");
             
-            if(this.#onParcelsSensingVerbose) this.printPerceivedParcels();
+            if (this.#onParcelsSensingVerbose) 
+                this.printPerceivedParcels();
 
-        })
+        });
 
         /**
          * The event handled by this listener is emitted on agent connection, on each movement of the agent and
          * on each movement of other agents in the visible area.
          */
-        client.onAgentsSensing( async ( perceivedAgents ) => {
+        this.client.onAgentsSensing( async ( perceivedAgents ) => {
 
-            this.#perceivedAgents.clear();
+            this.perceivedAgents.clear();
 
             for (const agent of perceivedAgents)
-                this.#perceivedAgents.set(agent.id, agent);
+                this.perceivedAgents.set(agent.id, agent);
             
-                if(this.#onAgentsSensingVerbose) this.printPerceivedAgents();
+            if (this.#onAgentsSensingVerbose) this.printPerceivedAgents();
 
-        })
+        });
+
     }
 
+    /**
+     * Adds a new intention in the intention queue if it is not already inserted.
+     * @param {*} desire 
+     * @param  {...any} predicate 
+     * @returns 
+     */
+    async addIntention ( desire, ...predicate ) {
+
+        if ( this.intentionQueue.find( (i) => i.predicate.join(' ') == predicate.join(' ') ) )
+            return;
+
+        const intention = new Intention(this, desire, predicate);
+        this.intentionQueue.push(intention);
+
+    }
+
+    /**
+     * Returns the first intention in the queue.
+     * @returns {(Intention|undefined)}
+     */
+    getCurrentIntention() {
+        
+        return this.intentionQueue[0];
+
+    }
+
+    /**
+     * Stops all the intentions in the intention queue.
+     */
+    async stop ( ) {
+
+        for (const intention of this.intentionQueue)
+            intention.stop();
+
+    }
+
+    /**
+     * Function that must implement the intention loop of the agent.
+     */
+    async intentionLoop ( ) {
+
+        throw new Error('You have to implement the async method intentionLoop!');
+
+    }
+
+    /**
+     * Function that must implement the logic to choose the next parcel to get.
+     */
+    selectParcel() {
+
+        throw new Error('You have to implement the method selectParcel!');
+
+    }
+
+        
+    /**
+     * Function that implement the logic for adding a parcel into the blacklist.
+     * @param {String} parcelId - the id of the parcel to add in the blacklist 
+     * @param  {Number} maxBlacklistSize - the maximum size of the blacklist  
+     */
+    addParcelInBlacklist(parcelId, maxBlacklistSize) {
+
+        this.parcelsBlackList.push(parcelId);
+
+        if (this.parcelsBlackList.length > maxBlacklistSize)
+            this.parcelsBlackList.shift();
+
+    }
+
+    /**
+     * Function that prints the current agent information.
+     */
     printDebug() {
 
         console.log("Agent {");
-        console.log(`- agentToken = ${this.#agentToken}`);
-        console.log(`- id = ${this.#id}`);
-        console.log(`- name = ${this.#name}`);
-        console.log(`- xPos = ${this.#xPos}`);
-        console.log(`- yPos = ${this.#yPos}`);
-        console.log(`- score = ${this.#score}`);
+        console.log(`- agentToken = ${this.agentToken}`);
+        console.log(`- id = ${this.id}`);
+        console.log(`- name = ${this.name}`);
+        console.log(`- position = x: ${this.position.x} , y: ${this.position.y}`);
+        console.log(`- score = ${this.score}`);
         console.log("}");
         console.log();
+        
     }
 
+    /**
+     * Function that prints the information about the perceived parcels.
+     */
     printPerceivedParcels() {
 
-        console.log(`Agent '${this.#name}' perceived parcels map:`);
-        console.log(this.#perceivedParcels);
+        console.log(`Agent '${this.name}' perceived parcels map:`);
+        console.log(this.perceivedParcels);
         console.log();
+
     }
 
+    /**
+     * Function that prints the information about the perceived agents.
+     */
     printPerceivedAgents() {
 
-        console.log(`Agent '${this.#name}' perceived agents map:`);
-        console.log(this.#perceivedAgents);
+        console.log(`Agent '${this.name}' perceived agents map:`);
+        console.log(this.perceivedAgents);
         console.log();
+
     }
 
 }
