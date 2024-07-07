@@ -1,12 +1,22 @@
 # autonomous-software-agents
 
-Command to start agent : node --env-file=.env index.js
+In order to run the code, it’s requested to clone the presented repository through:
+```console
+git clone https://github.com/lucavianunitn/autonomous-software-agents.git && cd autonomous-software-agents
+```
 
-TODO:
-- documentare tutto (soprattuto i valori ritornati dalle varie funzioni e spiegazione dei casi possibili) [SIMONE]
-- check del codice in base ai valori ritornati dalle varie funzioni [NEXT MEETING]
-- gestire le await con dei timeout (da capire la questione delle promise "skippate") [NEXT NEXT NEXT MEETING]
-- migliorare la intention revision (esempi: [2] scadenza pacchetti in black list (magari con timeout) ; ) + divisione pacchetti se teammate a pari distanza [LUCA]
-- strategia per la raccolta di pacchetti multipli prima della consegna (sia agente singolo che multipli) [SIMONE]
-- migliorare la coordinazione degli agenti multipli (ad esempio gestire meglio le 6 challenge proposte) [NEXT MEETING, BOOM]
-- fare il report
+It’s possible to install the used dependencies through:
+```console
+npm install
+```
+
+Creating a .env file by renaming in “.env” the proposed “.env.example” present at the root directory, with care given to adding personal agents tokens and defining, based on personal preferences, the host to use and which categories of debug messages there is the desire to be printed in the console. The two agents playing in a team must be named ending with “_1” and “_2” respectively to make them work properly. 
+Finally, it’s possible to execute the single and individual agents by doing:
+```console
+node --env-file=.env index_single.js
+```
+
+and a couple of collaborative agents through:
+```console
+node --env-file=.env index_team.js
+```
